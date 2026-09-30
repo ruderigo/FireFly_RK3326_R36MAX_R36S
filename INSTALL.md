@@ -196,33 +196,12 @@ bash ~/firefly-new/firefly/deploy/install.sh
 rm -rf ~/firefly-new ~/firefly_vX.Y.Z.zip
 ```
 
-**Upgrading from RetiCom** (FireFly's name before v0.2.0) works exactly the
-same. The installer moves your data from `~/.reticom` to `~/.firefly`
-(same identity, same address, same messages), then removes the old
-`/home/ark/reticom` app folder and the old RetiCom entry in Ports. After a
-reboot, Ports shows **FireFly**.
-
 **Don't run `cleanup.sh` for a normal update.** It deletes your messages
 (it keeps your address and settings).
 
 ---
 
-## 9. Rolling back
-
-If a new version misbehaves, install the previous zip exactly as in
-section 8. Your data in `~/.firefly` stays in place.
-
-To get an earlier zip: on GitHub, open the zip file, choose **History**,
-open the older commit, and download that version of the file. With git:
-`git log -- firefly_v*.zip` lists them, and
-`git show <commit>:<zip name> > old.zip` extracts one.
-
-If the CHANGELOG says a version changed the data format, restore your
-backup instead (section 10) or ask on the issue tracker first.
-
----
-
-## 10. Restoring your identity (new SD card, reflash, or clean reinstall)
+## 9. Restoring your identity (new SD card, reflash, or clean reinstall)
 
 Install FireFly first (section 5), but **don't start it yet**. Copy your
 backup to the handheld:
@@ -247,7 +226,7 @@ are again from your next announce.
 
 ---
 
-## 11. Clean reinstall, reset or uninstall
+## 10. Clean reinstall, reset or uninstall
 
 `cleanup.sh` removes the app, its Python environment, your messages and the
 Ports launcher. It **always** backs up your identity key and settings first,
