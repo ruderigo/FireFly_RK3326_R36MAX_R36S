@@ -14,7 +14,7 @@ re-implementation, so compatibility comes from the reference code itself.
 
 ![FireFly screens: chats, a conversation, a Stump node, the keyboard, network and setup](docs/screenshots.png)
 
-**Status:** v0.4.0. Runs on RK3326 handhelds with the dArkOS image of
+**Status:** v0.6.2. Runs on RK3326 handhelds with the dArkOS image of
 [arkos4clone](https://github.com/lcdyk0517/arkos4clone); tested on an R36MAX.
 See [Supported devices](#supported-devices).
 
@@ -145,7 +145,8 @@ Ports entry.
   Messages waiting for you are fetched at start and on a timer.
 - **Interoperability details**: stamps requested by a peer's announce are
   generated automatically; duplicate messages (direct + via node) are dropped;
-  images, files, voice and telemetry sent from Sideband are listed as
+  voice notes (Opus and Codec 2) are played and copied to the SD card; images,
+  files and telemetry sent from Sideband are listed as
   `[image — not shown on this device]` rather than lost silently; messages whose
   signature couldn't be verified are flagged.
 - **Any RNode, found at runtime**: the radio isn't part of start-up.
@@ -234,7 +235,7 @@ rnsd's own config decides the interfaces.
 
 Runs on any desktop with Python 3.10+, from the `firefly/` folder:
 
-    pip install rns lxmf pygame
+    pip install "rns==1.5.6" "lxmf==1.2.0" pygame   # plus opus-tools and codec2 for voice notes
     python3 -m firefly                  # window, keyboard controls
     python3 -m firefly --window 640x480 # preview a smaller screen
     python3 -m firefly --headless       # no window
@@ -246,13 +247,17 @@ From the `firefly/` folder:
     python3 tests/run_integration.py   # LXMF round trips, links, Stump /auth, over localhost TCP
     python3 tests/run_propagation.py   # offline peer: fallback to a propagation node
     python3 tests/run_radio.py         # radio manager against simulated RNodes (no hardware needed)
+    python3 tests/run_voice.py         # voice notes: Codec 2 spec test vector, Opus, SD copy (needs opusdec, c2dec)
+    python3 tests/run_block.py         # delete and block, across a restart
+    python3 tests/run_chat_selector.py # chat selector: any voice note, details, new arrivals
     python3 tests/ui_smoke.py          # 6000 random button presses through every screen
     python3 tests/screens.py 720x720 /tmp/shots   # screenshots of every screen
     python3 tests/devices.py /tmp/devshots        # every supported screen geometry, incl. rotated panels
 
 ## Known limits
 
-- Attachments (images, files, voice) are listed, not shown or sent yet.
+- Voice notes are received and played, not recorded or sent. Images and files
+  are listed, not shown or sent.
 - Stamp generation is slow on the Cortex-A35: messages to peers that demand
   high stamp costs can sit at `⚙` for a while.
 - No Bluetooth: the RNode must be on USB (or reachable over TCP).

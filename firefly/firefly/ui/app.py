@@ -54,6 +54,8 @@ class App:
         self.controllers = []
         self._init_controllers()
         self.joy_map = {int(k): v for k, v in core.settings["joystick_map"].items()}
+        from ..voice import Player
+        self.player = Player(log=core.log)
         self.last_version = -1
         self.next_refresh = 0
 
@@ -84,6 +86,30 @@ class App:
         self.toast_text, self.toast_until = text, time.time() + secs
 
     def quit(self): self.running = False
+
+    def copy_voice_to_sd(self):
+        import threading
+
+        def job():
+            copied, folder, errors = self.core.export_voice_notes()
+            if errors:
+                self.toast(f"Copy failed: {errors[-1]}", 5)
+            else:
+                where = folder.replace("/roms2/", "SD card (2nd) /").replace("/roms/", "SD card /")
+                self.toast(f"{copied} new voice note(s) copied to {where}", 5)
+        self.toast("Copying voice notes to the SD card…")
+        threading.Thread(target=job, daemon=True).start()
+
+    def confirm(self, title, detail, action_label, on_yes):
+        """A yes/no question with Cancel first (the default), so a quick double
+        press of A can never delete or block anything."""
+        from .widgets import Menu
+        self.push(Menu(self, title, [("Cancel", lambda: None), (action_label, on_yes)], subtitle=detail))
+
+    def close_peer(self, peer):
+        """Leave any open chat with this peer (after deleting or blocking it)."""
+        from .screens import ChatScreen
+        self.stack = [sc for sc in self.stack if not (isinstance(sc, ChatScreen) and sc.peer == peer)]
 
     def set_rotation(self, value):
         """Apply a rotation setting (auto/0/90/180/270) live and remember it."""
@@ -274,6 +300,10 @@ class App:
         while self.running:
             self._activity = False
             self.events()
+            self.player.pump()
+            if self.player.error:
+                self.toast(self.player.error, 6)
+                self.player.error = None
             now = time.time()
             if (self._activity or self.core.store.version != self.last_version or now >= self.next_refresh
                     or now < self.toast_until + 0.1):
@@ -281,6 +311,7 @@ class App:
                 self.next_refresh = now + 1.0
                 self.render()
             clock.tick(30)
+        self.player.stop()
         pygame.quit()
 
 

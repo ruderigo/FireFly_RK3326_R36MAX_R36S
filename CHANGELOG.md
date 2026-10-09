@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.6.2
+Everything since 0.4.0. Versions 0.5.0 to 0.6.1 only shipped inside Project
+Stump's tools folder, not here.
+
+- **Voice notes.** Notes sent from Sideband, FireFly for Android and other
+  LXMF apps are played on the handheld: Opus, and every Codec 2 mode in the
+  LXMF voice spec (700C to 3200), decoded byte-for-byte like Codec 2's own
+  `c2dec`. Pick any note in a chat, not only the newest, and play it whole.
+  Each note is also copied to the SD card as a WAV (`firefly-voice` next to
+  your ROMs, so you can get it off on a computer). Recording and sending
+  aren't supported yet.
+- **The installer adds `opus-tools` and `codec2`** for decoding, and installs
+  exactly Reticulum 1.5.6 and LXMF 1.2.0, the versions this release was
+  tested with, instead of the newest. `device_report.sh` shows whether both
+  decoders and an audio device are present.
+- **Delete and block.** Delete a single message (a voice note's audio files
+  go with it) or a whole conversation and contact; Cancel is the default.
+  Blocked contacts' messages and announces are ignored, including after a
+  restart (LXMF's own ignore list is rebuilt at start-up).
+- **Chat view**: a selector to move through messages, see a message's
+  details, and follow new arrivals.
+- **Offline delivery**: a propagation node is found from its announces and
+  messages waiting for you are collected sooner after a radio or network link
+  comes up, with a minimum gap between syncs. Messages are collected every
+  30 minutes by default (was 60); a setting still at the old default moves
+  to 30, a chosen interval is kept.
+- Fixed the Codec 2 decoding bug of 0.5.0 to 0.5.2.
+
 ## 0.4.0
 - **The radio is no longer part of start-up.** Reticulum starts with the
   Wi-Fi/LAN and TCP links only; a background radio manager attaches the RNode

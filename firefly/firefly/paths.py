@@ -25,6 +25,8 @@ class Paths:
     def lxmf_storage(self): return os.path.join(self.home, "lxmf")
     @property
     def log(self): return os.path.join(self.home, "firefly.log")
+    @property
+    def audio(self): return os.path.join(self.home, "audio")
 
     def ensure(self):
         for d in (self.home, self.rns_config_dir, self.lxmf_storage):

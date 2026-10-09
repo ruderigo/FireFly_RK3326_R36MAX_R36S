@@ -29,11 +29,13 @@ DEFAULTS = {
     "propagation_mode": "auto",      # auto | manual | off
     "propagation_node": None,        # hex hash when manual
     "fallback_to_propagation": True,
-    "sync_interval_min": 60,         # 0 = manual only
+    "sync_interval_min": 30,         # 0 = manual only
     "quick_replies": [
         "OK", "Yes", "No", "On my way", "Where are you?", "Can't talk now",
         "All good here", "Need help", "Copy that", "Thanks!",
     ],
+    "voice_to_sd": True,             # copy every voice note to the SD card as a WAV
+    "voice_export_dir": "auto",      # auto = /roms(2)/firefly-voice, visible on a computer
     "screen_rotation": "auto",       # auto | 0 | 90 | 180 | 270 (clockwise); Select+R1 cycles it
     "joystick_map": {},              # raw button index -> action, for pads without a mapping
     "log_level": 3,
@@ -70,6 +72,10 @@ class Settings:
                 pass
             self.data = copy.deepcopy(DEFAULTS)
             self.save()
+        # 0.5.x stored the old default (60 min); FireFly now collects every 30.
+        if self.data.get("sync_interval_min") == 60 and not self.data.get("sync_default_v2"):
+            self.data["sync_interval_min"] = 30
+        self.data["sync_default_v2"] = True
         try:
             self.validate()
         except (TypeError, ValueError, KeyError):

@@ -17,7 +17,7 @@ app = App(core, size=(640, 480))
 app.restart = lambda: app.toast("restart (stubbed)")
 app.quit = lambda: None
 acts = ["up", "down", "left", "right", "a", "b", "x", "y", "l1", "r1", "start"]
-random.seed(1)
+random.seed(int(os.environ.get("SMOKE_SEED", "1")))
 n = 0
 failed = False
 try:

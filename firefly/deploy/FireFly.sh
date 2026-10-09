@@ -25,7 +25,6 @@ fi
 for db in /opt/inttools/gamecontrollerdb.txt /usr/share/gamecontrollerdb.txt; do
   [ -f "$db" ] && export SDL_GAMECONTROLLERCONFIG_FILE="$db" && echo "controller db: $db" >> "$LOG" && break
 done
-export SDL_AUDIODRIVER=dummy     # FireFly makes no sound; keep the audio device free
 export PYTHONUNBUFFERED=1
 export PYTHONNOUSERSITE=1       # use the app's own rns/lxmf, not ~/.local
 

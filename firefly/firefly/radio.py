@@ -196,6 +196,10 @@ class RadioManager:
             if port.startswith("/dev/"):
                 self._remember_port(port)
             RNS.log(f"RNode online on {port} ({board})")
+            try:
+                self.core.on_interface_online()
+            except Exception:
+                pass
             return True
 
         if iface is not None and iface.detected:
