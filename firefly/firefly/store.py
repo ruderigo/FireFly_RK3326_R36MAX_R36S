@@ -39,6 +39,11 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS messages_peer ON messages(peer, ts);
 CREATE INDEX IF NOT EXISTS messages_hash ON messages(lxm_hash);
+CREATE TABLE IF NOT EXISTS blocked (
+    hash        TEXT PRIMARY KEY,      -- LXMF address (hex)
+    name        TEXT,                  -- the name they had when blocked, for the list
+    ts          REAL
+);
 """
 
 
@@ -50,7 +55,16 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")    # fewer writes on the SD card
         self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.executescript(SCHEMA)
+        self._migrate()
         self.version = 0
+
+    def _migrate(self):
+        """Add columns introduced after a database was created; existing messages stay."""
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(messages)")}
+        for name, kind in (("audio_mode", "INTEGER"), ("audio_path", "TEXT"), ("audio_secs", "REAL")):
+            if name not in cols:
+                self.db.execute(f"ALTER TABLE messages ADD COLUMN {name} {kind}")
+        self.db.commit()
 
     def _write(self, sql, args=()):
         with self.lock:
@@ -100,13 +114,19 @@ class Store:
 
     # ---------------------------------------------------------------- messages
     def add_message(self, peer, outgoing, content, state, ts=None, title="", method=None, lxm_hash=None,
-                    rssi=None, snr=None, verified=True, attachments=None, unread=False):
+                    rssi=None, snr=None, verified=True, attachments=None, unread=False,
+                    audio_mode=None, audio_path=None, audio_secs=None):
         cur = self._write(
             "INSERT INTO messages(peer, outgoing, content, title, ts, state, method, lxm_hash, rssi, snr,"
-            " verified, attachments, unread) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " verified, attachments, unread, audio_mode, audio_path, audio_secs)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (peer, 1 if outgoing else 0, content, title, ts or time.time(), state, method, lxm_hash,
-             rssi, snr, 1 if verified else 0, attachments, 1 if unread else 0))
+             rssi, snr, 1 if verified else 0, attachments, 1 if unread else 0, audio_mode, audio_path, audio_secs))
         return cur.lastrowid
+
+    def voice_notes(self, peer, limit=20):
+        return self._read("SELECT * FROM messages WHERE peer=? AND audio_mode IS NOT NULL "
+                          "ORDER BY ts DESC, id DESC LIMIT ?", (peer, limit))
 
     def has_message(self, lxm_hash):
         return bool(self._read("SELECT 1 FROM messages WHERE lxm_hash=?", (lxm_hash,)))
@@ -133,12 +153,41 @@ class Store:
 
     def conversations(self):
         return self._read("""
-            SELECT m.peer, m.content, m.ts, m.outgoing, m.state,
+            SELECT m.peer, m.content, m.ts, m.outgoing, m.state, m.audio_mode,
                    (SELECT COUNT(*) FROM messages u WHERE u.peer=m.peer AND u.unread=1) AS unread,
                    p.name, p.stump, p.hops
             FROM messages m LEFT JOIN peers p ON p.hash=m.peer
             WHERE m.id = (SELECT id FROM messages x WHERE x.peer=m.peer ORDER BY ts DESC, id DESC LIMIT 1)
             ORDER BY m.ts DESC""")
+
+    # ---------------------------------------------------------------- deleting and blocking
+    def delete_message(self, msg_id):
+        """Removes one message. Returns the audio file paths it owned, for the caller to delete."""
+        rows = self._read("SELECT audio_path FROM messages WHERE id=?", (msg_id,))
+        self._write("DELETE FROM messages WHERE id=?", (msg_id,))
+        return [r["audio_path"] for r in rows if r["audio_path"]]
+
+    def delete_conversation(self, peer):
+        """Removes every message with this peer, and the contact. Returns audio file paths."""
+        rows = self._read("SELECT audio_path FROM messages WHERE peer=? AND audio_path IS NOT NULL", (peer,))
+        with self.lock:
+            self.db.execute("DELETE FROM messages WHERE peer=?", (peer,))
+            self.db.execute("DELETE FROM peers WHERE hash=?", (peer,))
+            self.db.commit()
+            self.version += 1
+        return [r["audio_path"] for r in rows]
+
+    def block(self, peer, name=None):
+        self._write("INSERT OR REPLACE INTO blocked(hash, name, ts) VALUES (?,?,?)", (peer, name, time.time()))
+
+    def unblock(self, peer):
+        self._write("DELETE FROM blocked WHERE hash=?", (peer,))
+
+    def blocked(self):
+        return self._read("SELECT * FROM blocked ORDER BY ts DESC")
+
+    def is_blocked(self, peer):
+        return bool(self._read("SELECT 1 FROM blocked WHERE hash=?", (peer,)))
 
     def unread_total(self):
         return self._read("SELECT COUNT(*) AS n FROM messages WHERE unread=1")[0]["n"]

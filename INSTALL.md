@@ -9,7 +9,7 @@ In the commands below, replace:
 
 - `<handheld-ip>` with your handheld's IP address (shown in its Wi-Fi or
   network info screen),
-- `firefly_vX.Y.Z.zip` with the zip's file name (currently `firefly_v0.4.0.zip`).
+- `firefly_vX.Y.Z.zip` with the zip's file name (currently `firefly_v0.6.2.zip`).
 
 ---
 

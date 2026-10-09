@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -29,16 +29,23 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      # Same packages install.sh puts on the handheld (rns/lxmf unpinned there too,
-      # so CI also catches an upstream Reticulum release that breaks FireFly).
+      # Same packages install.sh puts on the handheld: the voice-note decoders from apt,
+      # and exactly the rns/lxmf versions it pins.
       - name: Install dependencies
-        run: pip install rns lxmf "pygame>=2" pyserial cryptography
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq opus-tools codec2
+          pip install "rns==1.5.6" "lxmf==1.2.0" "pygame>=2" pyserial cryptography
 
       - name: UI smoke test (6000 random button presses)
         run: python tests/ui_smoke.py
 
       - name: Layout at every supported screen geometry
         run: python tests/devices.py "$RUNNER_TEMP/devshots"
+
+      - name: Chat selector (voice notes, details, new arrivals)
+        timeout-minutes: 2
+        run: python tests/run_chat_selector.py
 
       - name: Radio manager against simulated RNodes
         timeout-minutes: 3
@@ -48,8 +55,16 @@ jobs:
         timeout-minutes: 3
         run: python tests/run_integration.py
 
+      - name: Delete and block, across a restart
+        timeout-minutes: 3
+        run: python tests/run_block.py
+
+      - name: Voice notes (Codec 2 spec test vector, Opus, SD copy)
+        timeout-minutes: 3
+        run: python tests/run_voice.py
+
       - name: Offline delivery through a propagation node
-        timeout-minutes: 4
+        timeout-minutes: 8
         run: python tests/run_propagation.py
 
       - name: Upload device screenshots

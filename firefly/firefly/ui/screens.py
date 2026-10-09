@@ -1,4 +1,5 @@
 """The four tabs (CHATS, PEERS, NETWORK, SETUP) and the chat thread view."""
+import os
 import time
 
 import pygame
@@ -44,6 +45,7 @@ class ListScreen(Screen):
 
     def draw_list(self, surf, f, rows, top_y, render_row, row_h):
         W, H = surf.get_size()
+        self.sel = min(self.sel, max(0, len(rows) - 1))
         visible = max(1, (H - top_y - f.line - 12) // row_h)
         start = max(0, min(self.sel - visible // 2, len(rows) - visible))
         y = top_y
@@ -73,6 +75,7 @@ class ChatsTab(ListScreen):
 
     def handle(self, action):
         rows = self.rows()
+        self.sel = min(self.sel, max(0, len(rows) - 1))   # the list may have shrunk (deleted, blocked)
         if action in ("up", "down"):
             self.move(action, len(rows))
         elif action == "a" and rows:
@@ -97,7 +100,8 @@ class ChatsTab(ListScreen):
                    T.EMBER_BRIGHT if sel else T.TEXT)
             D.text(s, f.mono_small, D.ago(c["ts"], now), (rect.right - 10, rect.y + 6), T.MUTED, right=True)
             prefix = "you: " if c["outgoing"] else ""
-            preview = prefix + c["content"].replace("\n", " ")
+            preview = prefix + (c["content"].replace("\n", " ") or ("♪ voice note" if c.get("audio_mode") is not None
+                                                                    else ""))
             D.text(s, f.mono_small, D.ellipsize(f.mono_small, preview, rect.w - 70),
                    (rect.x + 10, rect.y + 6 + f.line), T.MUTED)
             if c["unread"]:
@@ -109,82 +113,193 @@ class ChatsTab(ListScreen):
 
 
 # ======================================================================== chat thread
+def _clock(secs):
+    """The voice-note spec's label: '5.0 s', tenths rounded half up."""
+    from .. import voice
+    return voice.label(None if secs is None else int(round(secs * 1000)))
+
+
 class ChatScreen(Screen):
-    hints = [("A", "write"), ("X", "quick"), ("Y", "menu"), ("↑↓", "scroll"), ("B", "back")]
+    """A conversation. The D-pad selects a message (starting on the newest);
+    A acts on it: play or stop a voice note, or show a message's details."""
 
     def __init__(self, app, peer):
         super().__init__(app)
         self.peer = peer
-        self.scroll = 0   # lines scrolled up from the bottom
+        self.sel_id = None        # selected message id; None = follow the newest
+        self.offset = 0           # pixels the view is scrolled up from the bottom
 
     @property
     def title(self):
         return peer_label(self.app.core.store.peer(self.peer), self.peer)
 
+    # ------------------------------------------------ selection
+    def _messages(self):
+        return self.app.core.store.messages(self.peer)
+
+    def _selected(self, msgs):
+        if not msgs:
+            return None
+        if self.sel_id is not None:
+            for m in msgs:
+                if m["id"] == self.sel_id:
+                    return m
+        return msgs[-1]
+
+    def _move(self, msgs, delta):
+        if not msgs:
+            return
+        cur = self._selected(msgs)
+        i = next(i for i, m in enumerate(msgs) if m["id"] == cur["id"])
+        j = max(0, min(len(msgs) - 1, i + delta))
+        self.sel_id = None if j == len(msgs) - 1 else msgs[j]["id"]   # at the newest: follow new ones
+
+    @property
+    def hints(self):
+        msgs = self._messages()
+        m = self._selected(msgs)
+        h = [("↑↓", "select")]
+        if m is not None and m.get("audio_mode") is not None:
+            playing = self.app.player.busy() and self.app.player.playing_id == m["id"]
+            h.append(("A", "stop" if playing else "play"))
+        elif m is not None:
+            h.append(("A", "details"))
+        h += [("START", "write"), ("X", "quick"), ("Y", "menu"), ("B", "back")]
+        return h
+
+    def play(self, m):
+        from .. import voice
+        if self.app.player.busy() and self.app.player.playing_id == m["id"]:
+            self.app.player.stop()
+            return
+        if not voice.row_playable(m):
+            self.app.toast(f"Can't play this {voice.describe(m['audio_mode'])} voice note")
+            return
+        if not m["audio_path"] or not os.path.isfile(m["audio_path"]):
+            self.app.toast("This voice note's file is missing")
+            return
+        self.app.player.play(m["id"], m["audio_path"], m["audio_mode"], m.get("audio_secs"))
+
     def handle(self, action):
         core = self.app.core
-        if action in ("a", "start"):
+        msgs = self._messages()
+        if action == "up":
+            self._move(msgs, -1)
+        elif action == "down":
+            self._move(msgs, +1)
+        elif action == "l1":
+            self._move(msgs, -5)
+        elif action == "r1":
+            self.sel_id = None
+        elif action == "a":
+            m = self._selected(msgs)
+            if m is None:
+                self.app.push(Compose(self.app, "To " + self.title, lambda t: self._send(t)))
+            elif m.get("audio_mode") is not None:
+                self.play(m)
+            else:
+                self.app.push(Info(self.app, "Message", _message_details(core, m)))
+        elif action == "start":
             self.app.push(Compose(self.app, "To " + self.title, lambda t: self._send(t)))
         elif action == "x":
             items = [(q, (lambda q=q: self._send(q))) for q in core.settings["quick_replies"]]
             self.app.push(Menu(self.app, "Quick reply", items))
         elif action == "y":
-            self.app.push(Menu(self.app, self.title, PeerActions(self.app, self.peer).items(in_chat=True)))
-        elif action == "up":
-            self.scroll += 3
-        elif action == "down":
-            self.scroll = max(0, self.scroll - 3)
-        elif action == "l1":
-            self.scroll += 15
-        elif action == "r1":
-            self.scroll = 0
+            items = PeerActions(self.app, self.peer).items(in_chat=True)
+            m = self._selected(msgs)
+            if m is not None:
+                items = [("Details of the selected message", lambda m=m: self.app.push(
+                    Info(self.app, "Message", _message_details(core, m)))),
+                         ("Delete the selected message", lambda m=m: self._delete_message(m))] + items
+            if core.store.voice_notes(self.peer, 1):     # before the destructive ones, which stay last
+                i = next((k for k, (l, _) in enumerate(items) if l.startswith("Delete conversation")), len(items))
+                items.insert(i, ("Copy voice notes to the SD card", lambda: self.app.copy_voice_to_sd()))
+            self.app.push(Menu(self.app, self.title, items))
         elif action == "b":
             self.app.pop()
 
     def _send(self, text):
         self.app.core.send(self.peer, text)
-        self.scroll = 0
+        self.sel_id = None
 
+    def _delete_message(self, m):
+        preview = (m["content"] or ("voice note " + _clock(m["audio_secs"]) if m.get("audio_mode") is not None
+                                    else "message")).replace("\n", " ")
+
+        def go():
+            msgs = self._messages()
+            i = next((k for k, x in enumerate(msgs) if x["id"] == m["id"]), None)
+            if self.app.player.playing_id == m["id"]:
+                self.app.player.stop()
+            self.app.core.delete_message(m["id"])
+            # keep the selection on the neighbour (older one if there is one)
+            rest = self._messages()
+            if not rest or i is None or i >= len(rest):
+                self.sel_id = None
+            else:
+                self.sel_id = rest[max(0, i - 1)]["id"]
+            self.app.toast("Message deleted")
+        self.app.confirm("Delete this message?", D.ellipsize(self.app.fonts.mono_small, preview, 380),
+                         "Delete", go)
+
+    # ------------------------------------------------ drawing
     def draw(self, surf, f):
         core = self.app.core
         core.store.mark_read(self.peer)
         W, H = surf.get_size()
         p = core.store.peer(self.peer)
         top = self.app.content_top
-        # Peer strip
         hops = core.hops(self.peer)
         info = [f"{hops} hop{'s' if hops != 1 else ''}" if hops is not None else "no path yet"]
         if core.is_stump(self.peer):
             info.append("Stump node " + (p or {}).get("stump", ""))
+            ns = core.stump_state.get(self.peer)
+            if ns and ns.room:
+                info.append("in #" + ns.room)
             a = core.auth_state(self.peer)
             if a:
                 info.append({a.OK: "verified ✓", a.FAILED: "verify failed"}.get(a.state, "verifying…"))
-        D.text(surf, f.mono_small, " · ".join(info) + "   " + D.short_hash(self.peer), (14, top), T.MUTED)
         top += f.line + 4
 
-        # Build bubbles bottom-up
-        maxw = W * 3 // 4
-        blocks = []
-        for m in core.store.messages(self.peer):
-            blocks.append(self._layout(m, f, maxw, core.is_stump(self.peer)))
-        total = sum(b[0] for b in blocks)
-        view_h = H - top - f.line - 16
-        self.scroll = min(self.scroll, max(0, (total - view_h) // f.line))
-        y = H - f.line - 16 + self.scroll * f.line
-        for h, painter in reversed(blocks):
-            y -= h
-            if y + h < top:
-                break
-            if y < H:
-                painter(surf, y)
-        # Clear the header area bubbles may have drawn over
+        msgs = self._messages()
+        if not msgs:
+            D.text(surf, f.mono, "Say hello: press START to write, X for quick replies.", (W // 2, H // 2),
+                   T.MUTED, center=True)
+        else:
+            sel = self._selected(msgs)
+            maxw = W * 3 // 4
+            blocks = [(m, *self._layout(m, f, maxw, core.is_stump(self.peer))) for m in msgs]
+            # Virtual column, newest at the bottom: y measured upward from the bottom edge.
+            bottom = H - f.line - 16
+            view_h = bottom - top
+            below = 0
+            spans = []
+            for m, h, painter in reversed(blocks):
+                spans.append((m, h, painter, below))      # this block occupies [below, below + h)
+                below += h
+            total = below
+            for m, h, painter, b in spans:                 # keep the selection fully in view
+                if m["id"] == sel["id"]:
+                    if b < self.offset:
+                        self.offset = b
+                    elif b + h > self.offset + view_h:
+                        self.offset = b + h - view_h
+            self.offset = max(0, min(self.offset, max(0, total - view_h)))
+            surf.set_clip(pygame.Rect(0, top, W, view_h))     # bubbles stay inside the conversation area
+            for m, h, painter, b in spans:
+                y = bottom - (b - self.offset) - h
+                if y + h < top:
+                    break
+                if y < bottom:
+                    painter(surf, y, m["id"] == sel["id"])
+            surf.set_clip(None)
+        # Header strip drawn last, over any bubble that slid under it
         pygame.draw.rect(surf, T.BG, (0, 0, W, top - 2))
         self.app.draw_header(surf, f)
         D.text(surf, f.mono_small, " · ".join(info) + "   " + D.short_hash(self.peer),
                (14, self.app.content_top), T.MUTED)
-        if not blocks:
-            D.text(surf, f.mono, "Say hello: press A to write, X for quick replies.", (W // 2, H // 2), T.MUTED,
-                   center=True)
+        if msgs and self.offset > 0:
+            D.text(surf, f.mono_small, "▼ newer below (R1)", (W - 12, self.app.content_top), T.EMBER, right=True)
 
     def _layout(self, m, f, maxw, is_stump):
         """Returns (height, painter) for one message bubble."""
@@ -192,10 +307,22 @@ class ChatScreen(Screen):
         out = m["outgoing"]
         lines = []   # (font, text, color)
         if is_stump and not out:
-            for parsed in stump.parse_message(m["content"]):
+            if m["title"] and m["title"].startswith("#"):
+                lines.append((f.mono_small, m["title"], T.EMBER))     # the room this batch belongs to
+            for parsed in stump.parse_message(m["content"], m["title"] or ""):
                 lines += [(f.body, ln, c) for ln, c in _stump_render(parsed, f, maxw - 20)]
-        else:
+        elif m["content"]:
             lines = [(f.body, ln, T.TEXT) for ln in D.wrap(f.body, m["content"], maxw - 20)]
+        if m.get("audio_mode") is not None:
+            from .. import voice
+            if self.app.player.playing_id == m["id"] and self.app.player.busy():
+                lines.append((f.mono, f"■ playing  {_clock(m['audio_secs'])}  (A to stop)", T.EMBER_BRIGHT))
+            elif voice.row_playable(m):
+                lines.append((f.mono, f"▶ voice note  {_clock(m['audio_secs'])}  · {voice.describe(m['audio_mode'])}",
+                              T.EMBER))
+            else:
+                lines.append((f.mono_small, f"♪ voice note ({voice.describe(m['audio_mode'])}): "
+                                            "can't play this format yet", T.MUTED))
         if m["attachments"]:
             lines.append((f.mono_small, f"[{m['attachments']} — not shown on this device]", T.MUTED))
         if not m["verified"] and not out:
@@ -219,10 +346,12 @@ class ChatScreen(Screen):
         widths = [fn.size(t)[0] for fn, t, _ in lines] + [f.mono_small.size(meta + "  " + mark)[0]]
         bw = min(maxw, max(widths) + 22)
 
-        def paint(surf, y):
+        def paint(surf, y, selected=False):
             x = W - bw - 10 if out else 10
             rect = pygame.Rect(x, y + 2, bw, h - 8)
             D.box(surf, rect, T.PANEL if out else T.SIDEBAR, 8, T.EMBER if out else T.BORDER)
+            if selected:
+                pygame.draw.rect(surf, T.EMBER_BRIGHT, rect.inflate(4, 4), width=3, border_radius=10)
             yy = rect.y + 6
             for fn, t, c in lines:
                 D.text(surf, fn, t, (rect.x + 11, yy), c)
@@ -234,15 +363,58 @@ class ChatScreen(Screen):
         return h, paint
 
 
+def _message_details(core, m):
+    """What there is to know about one message, for the details panel."""
+    from .. import voice
+    out = ["Sent" if m["outgoing"] else "Received",
+           time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(m["ts"])), ""]
+    if m["outgoing"]:
+        out.append(f"Status: {m['state']}" + (f" ({m['method']})" if m["method"] else ""))
+        if m["reason"]:
+            out.append(f"Reason: {m['reason']}")
+    else:
+        out.append("Signature verified" if m["verified"] else "Signature NOT verified")
+        if m["rssi"] is not None or m["snr"] is not None:
+            out.append("Signal: " + "  ".join(x for x in (
+                f"{m['rssi']:.0f} dBm" if m["rssi"] is not None else "",
+                f"SNR {m['snr']:.1f} dB" if m["snr"] is not None else "") if x))
+        if m["method"]:
+            out.append(f"Delivered: {m['method']}")
+    if m.get("audio_mode") is not None:
+        out += ["", f"Voice note: {voice.describe(m['audio_mode'])}, {_clock(m['audio_secs'])}"]
+        if m["audio_path"] and os.path.isfile(m["audio_path"]):
+            out.append(f"{os.path.getsize(m['audio_path'])} bytes")
+    if m["title"]:
+        out.append(f"Title: {m['title']}")
+    if m["attachments"]:
+        out.append(f"Also attached: {m['attachments']}")
+    if m["content"]:
+        out += ["", m["content"]]
+    if m["lxm_hash"]:
+        out += ["", "Message ID:", m["lxm_hash"]]
+    return out
+
+
 def _stump_render(p, f, width):
     """Colour Stump lines by meaning (DMs purple, activity dim)."""
     k = p["kind"]
+    if k == "dm" and p.get("voice"):
+        return [(ln, T.DM_BODY) for ln in D.wrap(f.body, f"[DM] {p['author']}: ♪ voice note", width)]
     if k == "dm":
         return [(ln, T.DM_BODY) for ln in D.wrap(f.body, f"[DM] {p['author']}: {p['text']}", width)]
+    if k == "too_fast":
+        return [(ln, T.ERROR) for ln in D.wrap(f.body, "⧗ too many voice notes too fast", width)]
     if k in ("join", "part", "rename", "topic", "moved", "names", "room", "no_such_nick"):
         return [(ln, T.DIM) for ln in D.wrap(f.body, _stump_text(p), width)]
     if k == "action":
         return [(ln, T.ACTION) for ln in D.wrap(f.body, f"* {p['nick']} {p['text']}", width)]
+    if k == "refused":
+        hint = "  (Y → verify my identity)" if p["tier"] == "minted" else ""
+        return ([(ln, T.ERROR) for ln in D.wrap(f.body, f"⊘ #{p['room']} is {p['tier']}{hint}", width)] +
+                [(ln, T.DIM) for ln in D.wrap(f.body, p["text"], width)])
+    if k in ("already_in", "unknown_command"):
+        head = f"= already in #{p['room']}" if k == "already_in" else f"? unknown command {p['command']}"
+        return [(ln, T.DIM) for ln in D.wrap(f.body, head, width)]
     if k in ("auth_challenge", "auth_ok", "auth_fail"):
         return [(ln, T.ERROR if k == "auth_fail" else T.DIM)
                 for ln in D.wrap(f.body, k.upper().replace("_", "-") + " " + p["arg"], width)]
@@ -275,11 +447,16 @@ class PeerActions:
                       lambda: core.store.set_saved(peer, not p.get("saved"))))
         items.append(("Find path (ask the network)", lambda: (core.request_path(peer),
                                                               self.app.toast("Path request sent"))))
-        items.append(("Send via propagation node", lambda: self.app.push(
-            Compose(self.app, "Via node to " + peer_label(p, peer), lambda t: core.send(peer, t, "propagated")))))
+        if not core.is_stump(peer):   # Stump chat must go directly
+            items.append(("Send via propagation node", lambda: self.app.push(
+                Compose(self.app, "Via node to " + peer_label(p, peer), lambda t: core.send(peer, t, "propagated")))))
         if core.is_stump(peer):
             items.append(("Stump: verify my identity (/auth)", lambda: self._auth()))
             items.append(("Stump: list rooms (/rooms)", lambda: core.send(peer, "/rooms", "opportunistic")))
+            items.append(("Stump: join a room…", lambda: self.app.push(Compose(
+                self.app, "Join a room on " + peer_label(p, peer), lambda t: core.send(peer, t, "opportunistic"),
+                initial="/join #", send_label="JOIN"))))
+            items.append(("Stump: leave this room (/part)", lambda: core.send(peer, "/part", "opportunistic")))
             items.append(("Stump: who is here (/names)", lambda: core.send(peer, "/names", "opportunistic")))
         items.append(("Show address", lambda: self.app.push(Info(self.app, peer_label(p, peer), [
             "LXMF address:", D.spaced_hash(peer), "",
@@ -287,7 +464,36 @@ class PeerActions:
             f"Last heard: {D.ago(p.get('last_heard'), time.time())} ago" if p.get("last_heard") else "Never heard",
             f"Stump node: {p.get('stump')} ({p.get('stump_ver')})" if p.get("stump") else "",
         ]))))
+        items.append(("Delete conversation and contact", lambda: self._delete()))
+        items.append(("Block", lambda: self._block()))
         return items
+
+    def _delete(self):
+        core, peer = self.app.core, self.peer
+        name = peer_label(core.store.peer(peer) or {}, peer)
+        n = len(core.store.messages(peer, 100000))
+
+        def go():
+            if self.app.player.playing_id is not None:
+                self.app.player.stop()
+            core.delete_conversation(peer)
+            self.app.close_peer(peer)
+            self.app.toast(f"Deleted {name}")
+        self.app.confirm(f"Delete {name}?", f"{n} message(s) and the contact. They come back if they write. "
+                         "Copies on the SD card stay.", "Delete", go)
+
+    def _block(self):
+        core, peer = self.app.core, self.peer
+        name = peer_label(core.store.peer(peer) or {}, peer)
+
+        def go():
+            if self.app.player.playing_id is not None:
+                self.app.player.stop()
+            core.block(peer)
+            self.app.close_peer(peer)
+            self.app.toast(f"Blocked {name}. Undo in SETUP > Blocked.")
+        self.app.confirm(f"Block {name}?", "Deletes the conversation and ignores their messages and announces. "
+                         "They aren't told.", "Block", go)
 
     def _auth(self):
         if self.app.core.start_stump_auth(self.peer):
@@ -306,6 +512,7 @@ class PeersTab(ListScreen):
 
     def handle(self, action):
         rows = self.rows()
+        self.sel = min(self.sel, max(0, len(rows) - 1))   # the list may have shrunk (deleted, blocked)
         if action in ("up", "down"):
             self.move(action, len(rows))
             return
@@ -441,6 +648,12 @@ class NetworkTab(Screen):
             out.append(("m", f"sync: {core.sync_state}, last {D.ago(core.last_sync, now)} ago"))
         else:
             out.append(("m", "No propagation node yet. Messages to offline peers can't be stored."))
+        ves = core.voice_export_status
+        if ves:
+            folder, copied, err = ves
+            out += [("", ""), ("h", "VOICE NOTES ON THE SD CARD"), ("m", folder)]
+            if err:
+                out.append(("err", err))
         out += [("", ""), ("h", "LORA RADIO")]
         rs = core.radio.status if core.radio else None
         if rs:
@@ -544,6 +757,11 @@ class SettingsTab(ListScreen):
             ("fallback", "If peer unreachable, use node", "yes" if s["fallback_to_propagation"] else "no"),
             ("sync", "Fetch messages every",
              f"{s['sync_interval_min']} min" if s["sync_interval_min"] else "manual"),
+            ("head", "PRIVACY", None),
+            ("blocked", "Blocked", f"{len(self.app.core.store.blocked())}"),
+            ("head", "VOICE NOTES", None),
+            ("voicesd", "Copy to SD card (as WAV)", "on" if s.get("voice_to_sd", True) else "off"),
+            ("voicesdnow", "Copy all now", ""),
             ("head", "SCREEN", None),
             ("rotation", "Screen rotation", _rot_label(s.get("screen_rotation", "auto"), self.app.display.rotation)),
             ("head", "", None),
@@ -600,7 +818,7 @@ class SettingsTab(ListScreen):
             r["tx_power"] = max(0, min(22, r["tx_power"] + d)); self._radio()
         elif key == "freq":
             r["frequency"] += d * 25_000; self._radio()
-        elif key in ("radio_on", "auto", "transport", "fallback"):
+        elif key in ("radio_on", "auto", "transport", "fallback", "voicesd"):
             self._edit(key)
         elif key == "port":
             opts = ["auto"] + serial_ports()
@@ -625,6 +843,19 @@ class SettingsTab(ListScreen):
             s["transport"] = not s["transport"]; self._net()
         elif key == "fallback":
             s["fallback_to_propagation"] = not s["fallback_to_propagation"]; s.save()
+        elif key == "voicesd":
+            s["voice_to_sd"] = not s.get("voice_to_sd", True); s.save()
+        elif key == "voicesdnow":
+            app.copy_voice_to_sd()
+        elif key == "blocked":
+            rows = core.store.blocked()
+            if not rows:
+                app.toast("Nobody is blocked")
+                return
+            items = [(f"Unblock {b['name'] or D.short_hash(b['hash'])}  ({time.strftime('%Y-%m-%d', time.localtime(b['ts']))})",
+                      (lambda h=b["hash"], n=b["name"]: (core.unblock(h), app.toast(f"Unblocked {n or 'address'}"))))
+                     for b in rows]
+            app.push(Menu(app, "Blocked", items, subtitle="Their messages and announces are ignored until unblocked"))
         elif key == "preset":
             r.update(STUMP_RADIO); self._radio()
             app.toast("Stump network defaults loaded")

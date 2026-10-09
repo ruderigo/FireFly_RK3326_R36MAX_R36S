@@ -69,15 +69,43 @@ _ROOM_MSG = re.compile(r"^<([^>]+)> (.*)$", re.S)
 _ROOM_LIST = re.compile(r"^#(\S+) ·(\d+)\s*(\[(minted|hybrid)\])?\s*(.*)$")
 
 
+TOKEN_SEP = " — "   # replies a client acts on: "<token> — <sentence for people>"
+
+
+def _token_reply(line):
+    """'= #lxmf — …', '? /frob — …', '⊘ #vip minted — …': stable tokens, the same in
+    every language. Match the token; the sentence is only shown to the user."""
+    if line.startswith("⧗") and TOKEN_SEP in line:
+        return {"kind": "too_fast", "text": line.partition(TOKEN_SEP)[2]}
+    if TOKEN_SEP not in line or line[:2] not in ("= ", "? ", "⊘ "):
+        return None
+    token, _, sentence = line.partition(TOKEN_SEP)
+    sym, _, args = token.partition(" ")
+    args = args.split()
+    if sym == "=" and args and args[0].startswith("#"):
+        return {"kind": "already_in", "room": args[0][1:], "text": sentence}
+    if sym == "?" and args:
+        return {"kind": "unknown_command", "command": args[0], "text": sentence}
+    if sym == "⊘" and len(args) >= 2 and args[0].startswith("#"):
+        return {"kind": "refused", "room": args[0][1:], "tier": args[1], "text": sentence}
+    return None
+
+
 def parse_line(line):
     """Classify one line from a Stump node. Returns a dict with at least 'kind'."""
     line = line.rstrip("\r")
     head, _, rest = line.partition(" ")
     if head in ("AUTH-CHALLENGE", "AUTH-OK", "AUTH-FAIL"):   # wire tokens, never translated
         return {"kind": head.lower().replace("-", "_"), "arg": rest.strip()}
+    tok = _token_reply(line)
+    if tok:
+        return tok
     m = _DM.match(line)
     if m:
-        return {"kind": "dm", "author": m.group(1), "text": m.group(2)}
+        item = {"kind": "dm", "author": m.group(1), "text": m.group(2)}
+        if m.group(2).startswith("♪ "):          # a voice DM: '♪ 5.0 s', the audio is in the field
+            item["voice"] = m.group(2)[2:].strip()
+        return item
     if line.startswith("✓ "):
         return {"kind": "join", "nick": line[2:].strip()}
     if line.startswith("✗ "):
@@ -109,9 +137,41 @@ def parse_line(line):
     return {"kind": "text", "text": line}
 
 
-def parse_message(content):
-    """A Stump LXMF message may carry several lines, one item each."""
-    return [parse_line(l) for l in content.split("\n") if l.strip()]
+ROOM_KINDS = ("msg", "action", "join", "part", "rename")
+
+
+def parse_message(content, title=""):
+    """A Stump LXMF message may carry several lines, one item each.
+
+    Pushed room batches name their room in the LXMF title ('#lxmf'): room
+    lines are filed under that room, not under the room the client thinks it
+    is in, because lines queued just before a /join may still arrive. DM-only
+    batches have no title (each [DM] line names its author)."""
+    room = title[1:] if title and title.startswith("#") else None
+    items = []
+    for l in content.split("\n"):
+        if not l.strip():
+            continue
+        item = parse_line(l)
+        if room and item["kind"] in ROOM_KINDS:
+            item["room"] = room
+        items.append(item)
+    return items
+
+
+class NodeState:
+    """What a client knows about its place on one Stump node."""
+
+    def __init__(self):
+        self.room = None          # where the node says we are
+        self.refused = None       # last tier refusal: (room, tier, sentence)
+
+    def update(self, items):
+        for it in items:
+            if it["kind"] in ("moved", "already_in"):
+                self.room = it["room"]
+            elif it["kind"] == "refused":
+                self.refused = (it["room"], it["tier"], it["text"])
 
 
 def is_mesh_nick(nick):

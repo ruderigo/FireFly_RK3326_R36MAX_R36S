@@ -34,19 +34,25 @@ bob, stp, anon = "823de26f44824bc5d37611af7851414c", "a8e7c0e088fc474c34360e9105
 st.upsert_peer(bob, "lxmf", name="Sideband Bob", hops=2)
 st.upsert_peer(stp, "lxmf", name="LaBuche", hops=1, stump="LaBuche", stump_ver="1.4")
 core.stumps[stp] = ("LaBuche", "1.4")
+from firefly import stump as _stump
+core.stump_state[stp] = _stump.NodeState(); core.stump_state[stp].room = "lxmf"
 st.upsert_peer(anon, "lxmf", hops=4)
 st.upsert_peer("c0ffee00c0ffee00c0ffee00c0ffee00", "propagation", name="Montagne PN", hops=3, extra="on")
 now = time.time()
 st.add_message(bob, False, "Hey! Are you on the ridge tonight? Signal is great up here.", "received", ts=now-600, rssi=-97, snr=6.5)
 st.add_message(bob, True, "Yes, heading up around 8. I'll bring the big antenna.", "delivered", ts=now-560)
 st.add_message(bob, False, "Perfect ✓ see you there", "received", ts=now-500, rssi=-101, snr=3.0)
+st.add_message(bob, False, "", "received", ts=now-120, rssi=-99, snr=4.5,
+               audio_mode=0x04, audio_path="/nonexistent.c2", audio_secs=12.4)
 st.add_message(bob, True, "Leaving now", "sent", ts=now-60)
 st.add_message(bob, True, "Can you hear me?", "failed", ts=now-30).__class__
 st.update_message(5, reason="not delivered")
 st.add_message(anon, False, "photo from the trailhead", "received", ts=now-7200, attachments="image", verified=False, unread=True)
-st.add_message(stp, True, "/rooms", "delivered", ts=now-300)
-st.add_message(stp, False, "#main ·3  General. Be decent.\n#lxmf ·2  Mesh room\n#lounge ·1  [hybrid] ", "received", ts=now-290, unread=True)
-st.add_message(stp, False, "✓ ~Rod\n<alice> welcome, mesh friend!\n[DM] <bob>: psst, bring snacks\n* alice waves", "received", ts=now-200, unread=True)
+st.add_message(stp, False, "→ #lxmf", "received", ts=now-330, unread=True)
+st.add_message(stp, False, "✓ ~Rod\n<alice> welcome, mesh friend!\n* alice waves", "received", ts=now-320, title="#lxmf", unread=True)
+st.add_message(stp, False, "[DM] <bob>: psst, bring snacks", "received", ts=now-300, unread=True)
+st.add_message(stp, True, "/join #vip", "delivered", ts=now-200)
+st.add_message(stp, False, "⊘ #vip minted — ce salon exige une identité vérifiée -- envoyez /auth", "received", ts=now-190, unread=True)
 
 import pygame
 from firefly.ui.app import App

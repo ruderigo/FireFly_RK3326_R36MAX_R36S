@@ -41,7 +41,9 @@ fi
 
 echo "== 1/5 System packages (prebuilt: no compiling, so no swap needed)"
 sudo apt-get update
-sudo apt-get install -y python3-venv python3-pygame python3-cryptography python3-serial fonts-dejavu-core
+# opus-tools and codec2 decode voice notes (Opus and Codec2, the two LXMF voice formats)
+sudo apt-get install -y python3-venv python3-pygame python3-cryptography python3-serial fonts-dejavu-core \
+  opus-tools codec2
 
 echo "== 2/5 App files -> $APP (btrfs home, not exFAT /roms)"
 if [ ! -f "$HERE/firefly/core.py" ]; then
@@ -62,7 +64,8 @@ echo "== 3/5 Reticulum + LXMF in a private environment"
 # PYTHONNOUSERSITE: ignore any rns/lxmf in ~/.local so the app always uses its own copy.
 export PYTHONNOUSERSITE=1
 [ -d "$APP/venv" ] || python3 -m venv --system-site-packages "$APP/venv"
-"$APP/venv/bin/pip" install --upgrade rns lxmf
+# Exactly the versions this FireFly release was tested with.
+"$APP/venv/bin/pip" install --upgrade "rns==1.5.6" "lxmf==1.2.0"
 
 echo "== 4/5 Serial port access for the LoRa radio"
 sudo usermod -aG dialout "$USER" || true
