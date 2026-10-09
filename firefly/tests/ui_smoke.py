@@ -19,6 +19,7 @@ app.quit = lambda: None
 acts = ["up", "down", "left", "right", "a", "b", "x", "y", "l1", "r1", "start"]
 random.seed(1)
 n = 0
+failed = False
 try:
     for i in range(6000):
         a = random.choice(acts)
@@ -31,4 +32,5 @@ try:
     print("OK", n, "actions; sent messages:", sum(1 for c in core.store.conversations() for m in core.store.messages(c["peer"]) if m["outgoing"]))
 except Exception:
     traceback.print_exc(); print("FAILED after", n, "actions, screen", type(app.current).__name__)
-core.stop(); os._exit(0)
+    failed = True
+core.stop(); os._exit(1 if failed else 0)

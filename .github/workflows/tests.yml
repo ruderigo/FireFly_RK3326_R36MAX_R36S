@@ -1,0 +1,61 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.9 is the oldest Python install.sh accepts; 3.11 matches current Debian-based dArkOS images.
+        python: ["3.9", "3.11"]
+    defaults:
+      run:
+        working-directory: firefly
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # Same packages install.sh puts on the handheld (rns/lxmf unpinned there too,
+      # so CI also catches an upstream Reticulum release that breaks FireFly).
+      - name: Install dependencies
+        run: pip install rns lxmf "pygame>=2" pyserial cryptography
+
+      - name: UI smoke test (6000 random button presses)
+        run: python tests/ui_smoke.py
+
+      - name: Layout at every supported screen geometry
+        run: python tests/devices.py "$RUNNER_TEMP/devshots"
+
+      - name: Radio manager against simulated RNodes
+        timeout-minutes: 3
+        run: python tests/run_radio.py
+
+      - name: LXMF end-to-end with a peer and a fake Stump
+        timeout-minutes: 3
+        run: python tests/run_integration.py
+
+      - name: Offline delivery through a propagation node
+        timeout-minutes: 4
+        run: python tests/run_propagation.py
+
+      - name: Upload device screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: devshots-py${{ matrix.python }}
+          path: ${{ runner.temp }}/devshots
+          if-no-files-found: ignore
