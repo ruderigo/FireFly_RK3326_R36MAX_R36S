@@ -40,18 +40,22 @@ from firefly.ui.app import App
 from firefly.ui.screens import ChatScreen
 problems = []
 pygame.display.init()
-for (w, h), label in GEOMETRIES.items():
-    pygame.display.quit(); pygame.display.init()
-    app = App(core, size=(w, h))
-    lw, lh = app.surf.get_size()
-    for name, setup in (("chats", lambda: app.switch_tab(0)), ("setup", lambda: app.switch_tab(3)),
-                        ("chat", lambda: (app.switch_tab(0), app.push(ChatScreen(app, bob))))):
-        setup()
-        app.render()
-        # overflow check: text rendered beyond the right edge shows up as non-background pixels
-        # in the last column only if something ran off; sample the logical surface.
-        edge = [app.surf.get_at((lw - 1, y))[:3] for y in range(0, lh, 2)]
-        pygame.image.save(app.display.screen, f"{out}/{w}x{h}_{name}.png")
-    app.stack.clear()
-    print(f"{w}x{h:<5} rotation {app.display.rotation:>3}°  drawing {lw}x{lh}  font {app.fonts.base}px   {label}")
-core.stop(); os._exit(0)
+failed = False
+try:
+    for (w, h), label in GEOMETRIES.items():
+        pygame.display.quit(); pygame.display.init()
+        app = App(core, size=(w, h))
+        lw, lh = app.surf.get_size()
+        for name, setup in (("chats", lambda: app.switch_tab(0)), ("setup", lambda: app.switch_tab(3)),
+                            ("chat", lambda: (app.switch_tab(0), app.push(ChatScreen(app, bob))))):
+            setup()
+            app.render()
+            # overflow check: text rendered beyond the right edge shows up as non-background pixels
+            # in the last column only if something ran off; sample the logical surface.
+            edge = [app.surf.get_at((lw - 1, y))[:3] for y in range(0, lh, 2)]
+            pygame.image.save(app.display.screen, f"{out}/{w}x{h}_{name}.png")
+        app.stack.clear()
+        print(f"{w}x{h:<5} rotation {app.display.rotation:>3}°  drawing {lw}x{lh}  font {app.fonts.base}px   {label}")
+except Exception:
+    import traceback; traceback.print_exc(); failed = True
+core.stop(); os._exit(1 if failed else 0)
