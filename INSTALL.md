@@ -26,8 +26,7 @@ In the commands below, replace:
 - A **LoRa board with RNode firmware**, plugged into the handheld's USB
   (through a hub on the OTG port if needed). FireFly also works without
   one, over Wi-Fi/LAN or the internet.
-- The `firefly_vX.Y.Z.zip` at the top of this repository. On GitHub, open
-  the file and use **Download raw file** (or clone the repository).
+- `firefly_vX.Y.Z.zip` from the [latest release](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S/releases/latest) (under **Assets**).
 
 ---
 
@@ -80,12 +79,11 @@ Keep this SSH session open for the next steps.
 
 ## 4. Copy the zip to the handheld
 
-**Option A: download it on the handheld.** In the SSH session (replace
-`<github-user>/<repo>` with this repository's path):
+**Option A: download it on the handheld.** In the SSH session:
 
 ```bash
 cd /home/ark
-wget https://github.com/<github-user>/<repo>/raw/main/firefly_vX.Y.Z.zip
+wget https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S/releases/latest/download/firefly_vX.Y.Z.zip
 ```
 
 **Option B: copy it from your computer.** Open a **second** terminal on your computer (on a Mac, `Cmd + T` opens a new

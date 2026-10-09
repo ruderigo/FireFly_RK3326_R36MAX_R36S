@@ -24,13 +24,13 @@ Full step-by-step guide: **[INSTALL.md](INSTALL.md)**. In short:
 
 1. Flash RNode firmware onto a LoRa board (`rnodeconf --autoinstall`) and
    plug it into the handheld's USB.
-2. Copy `firefly_vX.Y.Z.zip` from this repository to the handheld with `scp`
-   (or download it on the handheld with `wget`).
+2. Download `firefly_vX.Y.Z.zip` from the [latest release](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S/releases/latest) and copy it
+   to the handheld with `scp` (or download it on the handheld with `wget`).
 3. Over SSH, unpack it to a temporary folder and run
    `deploy/cleanup.sh`, then `deploy/install.sh`. Reboot.
 
-The zip and the unpacked `firefly/` folder in this repository hold the same
-files: the zip is what you copy to the handheld, the folder is there to
+The release zip holds the `firefly/` folder of this repository at that
+version: the zip is what you copy to the handheld, the folder is there to
 read and browse.
 4. Open **Ports → FireFly**.
 
@@ -225,7 +225,6 @@ rnsd's own config decides the interfaces.
 
     README.md, INSTALL.md, CHANGELOG.md
     docs/                  screenshots
-    firefly_vX.Y.Z.zip     what you install (same content as firefly/)
     firefly/
       deploy/              install.sh, cleanup.sh, device_report.sh, FireFly.sh (Ports launcher)
       firefly/             the Python package
