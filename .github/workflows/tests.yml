@@ -51,6 +51,10 @@ jobs:
         timeout-minutes: 3
         run: python tests/run_radio.py
 
+      - name: radio.json from the Stump provisioner, and the network passphrase
+        timeout-minutes: 3
+        run: python tests/run_radiojson.py
+
       - name: LXMF end-to-end with a peer and a fake Stump
         timeout-minutes: 3
         run: python tests/run_integration.py

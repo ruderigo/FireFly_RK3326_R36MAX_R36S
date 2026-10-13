@@ -72,6 +72,16 @@ class Core:
         if restored:
             what = "radio settings" if "radio" in restored else "settings"
             self.status_note = f"Restored your {what} from {os.path.basename(os.path.dirname(src))}"
+        # radio.json from a Stump technician (the provisioner's Heltec profile), applied once per file.
+        self.radio_json_note = ""
+        try:
+            from . import radiojson
+            applied, msg, path = radiojson.auto_import(self.settings, home=paths.home)
+            if path and msg and msg != "already applied":
+                log(msg)
+                self.radio_json_note = msg if applied else "radio.json not used: " + msg
+        except Exception as e:      # a stray file must never stop the app
+            log(f"radio.json: {e}")
 
     # ================================================================ lifecycle
     def start(self):

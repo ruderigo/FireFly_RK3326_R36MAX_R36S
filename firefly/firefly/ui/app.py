@@ -58,6 +58,8 @@ class App:
         self.player = Player(log=core.log)
         self.last_version = -1
         self.next_refresh = 0
+        if getattr(core, "radio_json_note", ""):
+            self.toast(core.radio_json_note, 6)
 
     # ------------------------------------------------ geometry
     @property

@@ -19,7 +19,8 @@ BANDWIDTHS = [7_800, 10_400, 15_600, 20_800, 31_250, 41_700, 62_500, 125_000, 25
 DEFAULTS = {
     "display_name": "R36 Operator",
     "announce_interval_min": 30,     # Stump needs < 60 to keep you DM-reachable
-    "radio": dict(enabled=True, port="auto", **STUMP_RADIO),
+    "radio": dict(enabled=True, port="auto", ifac_netname="", ifac_passphrase="", **STUMP_RADIO),
+    "radio_json_imported": None,     # SHA-256 of the last radio.json applied (see radiojson.py)
     "auto_interface": True,          # zero-conf discovery on Wi-Fi / Ethernet
     "tcp_peers": [],                 # ["host:port", ...] internet or LAN entrypoints
     "rnode_hosts": [],               # Wi-Fi RNodes by host/IP (RNode TCP port 7633)
@@ -92,6 +93,9 @@ class Settings:
         r["spreading_factor"] = int(min(max(int(r["spreading_factor"]), 5), 12))
         r["coding_rate"] = int(min(max(int(r["coding_rate"]), 5), 8))
         r["tx_power"] = int(min(max(int(r["tx_power"]), 0), 22))
+        # Interface access code (IFAC): only for meshes that use one. Strings, possibly empty.
+        r["ifac_netname"] = str(r.get("ifac_netname") or "")[:64]
+        r["ifac_passphrase"] = str(r.get("ifac_passphrase") or "")[:128]
         self.data["announce_interval_min"] = max(0, int(self.data["announce_interval_min"]))
         self.data["sync_interval_min"] = max(0, int(self.data["sync_interval_min"]))
         if self.data["propagation_mode"] not in ("auto", "manual", "off"):

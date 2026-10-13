@@ -73,6 +73,19 @@ devices.append(other); core.radio.search_now()
 check(wait(lambda: core.radio.status.state == RS.ONLINE and core.radio.status.port == other.port, 25),
       "a different RNode plugged in is picked up automatically")
 
+# A Heltec V3 resets when its port opens and may need longer than Reticulum's 2.2 s to boot.
+# Before 0.7.1 FireFly reported "not an RNode", and every retry reset it again (seen on an R36MAX).
+# Made before the others are unplugged, so it doesn't reuse a pseudo-terminal name that
+# the old interface (or Reticulum's reconnect loop) may still be trying to open.
+slow = FakeRNode(band=(902e6, 928e6), fw=(1, 86), boot_s=4.5)
+for d in list(devices):
+    d.unplug(); devices.remove(d)
+check(wait(lambda: core.radio.status.state in (RS.SEARCHING, RS.NO_DEVICES), 20), "  (old RNodes unplugged)")
+devices.append(slow); core.radio.search_now()
+check(wait(lambda: core.radio.status.state == RS.ONLINE and core.radio.status.port == slow.port, 25),
+      f"an RNode that boots slowly after the port opens is found on the first try ({slow.ignored} early requests lost)")
+check(slow.ignored > 0, "  ...and it really was still booting when first asked")
+
 core.settings["radio"]["enabled"] = False; core.radio.request_apply(delay=0)
 check(wait(lambda: core.radio.status.state == RS.OFF, 10), "radio can be switched off live")
 core.stop()

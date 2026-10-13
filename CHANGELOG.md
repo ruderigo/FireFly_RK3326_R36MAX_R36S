@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.7.1
+- **Fixed: a USB RNode could stay undetected until FireFly was restarted.**
+  Opening the serial port resets ESP32 boards such as the Heltec V3, and
+  Reticulum gives the board only 2.2 s to answer. A board that booted a
+  little slower was taken for "not an RNode", and every retry reopened the
+  port and reset it again, so it could miss indefinitely ("Could not detect
+  device" every 30 s in the Reticulum log; the board's LEDs active, nothing
+  sent or received). FireFly now keeps asking on the open port for up to
+  8 s, without reopening it, so a slow-booting board is found on the first
+  try. Seen on an R36MAX with a Heltec V3; the radio test now includes a
+  board that boots that slowly.
+
+## 0.7.0
+Follows LaBuche-Stump Beta A, which carries FireFly on its SD card and
+provisions Heltec radios for handhelds.
+- **The release zip is now named `FireFly-RK3326-<version>.zip`**, the name
+  Stump nodes look for in their SD card's `tools` folder (they offer the
+  highest version on their Wi-Fi). Same content and layout; releases up to
+  0.6.2 were `firefly_vX.Y.Z.zip`.
+- **Off-grid updates.** The installer no longer needs internet when nothing
+  new is needed: system packages already present aren't downloaded again,
+  and Reticulum/LXMF are kept when the right versions are installed, so a
+  zip downloaded from a Stump installs entirely off-grid. Without internet,
+  missing voice decoders are skipped with a warning; missing essentials stop
+  the install with the list. A `wheels/` folder (rns and lxmf wheels) makes
+  even a first pip step offline.
+- **radio.json**: the Stump provisioner's radio profile for a handheld's
+  Heltec (frequency, bandwidth, SF, CR, TX power, optional IFAC passphrase)
+  is applied at start when found in `/roms/firefly/`,
+  `/roms/ports/meshcommandermax/` (the provisioner's path), `/roms/ports/firefly/`,
+  the top of `/roms`, or `~/.firefly/`. Applied once per file content, so
+  later changes by hand stick; reported on screen; a broken file changes
+  nothing and says why. SETUP → *Load radio.json from SD card* re-applies it.
+- **Network passphrase (IFAC)**: SETUP → *Network passphrase* (and an
+  optional network name) for meshes that use Reticulum interface access
+  codes, applied to the RNode interface live like the other radio settings.
+- Same Reticulum 1.5.6 / LXMF 1.2.0 as 0.6.2, so updating needs no download.
+
 ## 0.6.2
 Everything since 0.4.0. Versions 0.5.0 to 0.6.1 only shipped inside Project
 Stump's tools folder, not here.
