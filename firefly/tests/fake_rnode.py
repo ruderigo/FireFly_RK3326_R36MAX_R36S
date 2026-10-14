@@ -21,7 +21,7 @@ def esc(data):
 
 
 class FakeRNode:
-    def __init__(self, band=(137e6, 1020e6), fw=(1, 82), answers=True, max_txp=22):
+    def __init__(self, band=(137e6, 1020e6), fw=(1, 82), answers=True, max_txp=22, boot_s=0.0):
         self.master, slave = pty.openpty()
         tty.setraw(self.master)
         tty.setraw(slave)
@@ -30,6 +30,13 @@ class FakeRNode:
         self.band, self.fw, self.answers, self.max_txp = band, fw, answers, max_txp
         self.freq = int(band[0]); self.bw = 125000; self.txp = 0; self.sf = 7; self.cr = 5; self.state = 0
         self.set_log = []
+        # boot_s: like an ESP32 that resets when the port opens and needs boot_s seconds
+        # before it answers. Reticulum waits 2 s after opening before its first byte,
+        # so the board counts as reset 2 s before the first detect request of a session.
+        self.boot_s = boot_s
+        self.last_rx = 0.0
+        self.booted_at = 0.0
+        self.ignored = 0
         self.alive = True
         threading.Thread(target=self._loop, daemon=True).start()
 
@@ -41,6 +48,14 @@ class FakeRNode:
 
     def _handle(self, cmd, data):
         if not self.answers:
+            return
+        now = time.time()
+        if cmd == CMD["DETECT"] and self.boot_s and now - self.last_rx > 1.5:
+            self.booted_at = now - 2.0 + self.boot_s      # a new session: the port was just (re)opened
+        if cmd == CMD["DETECT"]:
+            self.last_rx = now
+        if now < self.booted_at:
+            self.ignored += 1             # still booting: bytes are lost, as on the real board
             return
         if cmd == CMD["DETECT"] and data[:1] == b"\x73":
             self._send(CMD["DETECT"], b"\x46")

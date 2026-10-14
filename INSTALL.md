@@ -9,15 +9,18 @@ In the commands below, replace:
 
 - `<handheld-ip>` with your handheld's IP address (shown in its Wi-Fi or
   network info screen),
-- `firefly_vX.Y.Z.zip` with the zip's file name (currently `firefly_v0.6.2.zip`).
+- `FireFly-RK3326-X.Y.Z.zip` with the zip's file name (currently
+  `FireFly-RK3326-0.7.1.zip`; releases up to 0.6.2 were named `firefly_vX.Y.Z.zip`).
 
 ---
 
 ## 1. What you need
 
 - The handheld, running the **dArkOS image of arkos4clone**, with **Wi-Fi or
-  USB Ethernet working** (the installer downloads packages). The installer
-  checks the firmware first and stops with an explanation if it's too old.
+  USB Ethernet working** for the first install (the installer downloads
+  packages once). Updates install without internet; see
+  [Installing off-grid](#installing-off-grid). The installer checks the
+  firmware first and stops with an explanation if it's too old.
 - **Remote services (SSH) enabled** on the handheld. In EmulationStation:
   Start → Options → Enable Remote Services (the wording varies a little
   between firmware builds). The login is usually user `ark`, password `ark`.
@@ -26,7 +29,8 @@ In the commands below, replace:
 - A **LoRa board with RNode firmware**, plugged into the handheld's USB
   (through a hub on the OTG port if needed). FireFly also works without
   one, over Wi-Fi/LAN or the internet.
-- `firefly_vX.Y.Z.zip` from the [latest release](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S/releases/latest) (under **Assets**).
+- `FireFly-RK3326-X.Y.Z.zip` from the [latest release](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S/releases/latest) (under **Assets**).
+  A LaBuche-Stump node also offers it on its own Wi-Fi (section 4, option C).
 
 ---
 
@@ -83,7 +87,7 @@ Keep this SSH session open for the next steps.
 
 ```bash
 cd /home/ark
-wget https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S/releases/latest/download/firefly_vX.Y.Z.zip
+wget https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S/releases/latest/download/FireFly-RK3326-X.Y.Z.zip
 ```
 
 **Option B: copy it from your computer.** Open a **second** terminal on your computer (on a Mac, `Cmd + T` opens a new
@@ -91,7 +95,7 @@ tab and keeps the SSH session open), then send the zip to the handheld's
 home folder:
 
 ```bash
-scp /path/to/firefly_vX.Y.Z.zip ark@<handheld-ip>:/home/ark/
+scp /path/to/FireFly-RK3326-X.Y.Z.zip ark@<handheld-ip>:/home/ark/
 ```
 
 **Mac shortcut:** type `scp ` (with a trailing space), drag the zip from
@@ -99,6 +103,22 @@ Finder into the terminal window, type a space, then paste
 `ark@<handheld-ip>:/home/ark/`.
 
 Enter the handheld's password (usually `ark`) when asked.
+
+**Option C: from a Stump node, no internet needed.** LaBuche-Stump nodes
+carry FireFly on their SD card and offer it under **About → Apps &
+Handhelds** and on their `/tools` page. Join the Stump's Wi-Fi with your
+computer, download `FireFly-RK3326-X.Y.Z.zip` there, then copy it as in
+option B. If the handheld itself is on the Stump's Wi-Fi (through a USB
+Wi-Fi adapter), it can fetch it directly:
+
+```bash
+cd /home/ark
+wget -O FireFly-RK3326-X.Y.Z.zip "http://<stump-address>/tool?f=FireFly-RK3326-X.Y.Z.zip"
+```
+
+A Stump's Wi-Fi has no internet, so a **first** install from it still needs
+internet afterwards for the system packages; an **update** doesn't (see
+[Installing off-grid](#installing-off-grid)).
 
 Earlier versions stay available in the repository history, so you can
 always roll back (section 9).
@@ -112,7 +132,7 @@ Back in the **SSH session on the handheld**:
 ```bash
 # 1. Unpack into a temporary folder
 mkdir -p ~/firefly-new
-unzip -o ~/firefly_vX.Y.Z.zip -d ~/firefly-new
+unzip -o ~/FireFly-RK3326-X.Y.Z.zip -d ~/firefly-new
 
 # 2. Remove any earlier install; keeps your address and settings (safe on a first install too)
 bash ~/firefly-new/firefly/deploy/cleanup.sh
@@ -121,7 +141,7 @@ bash ~/firefly-new/firefly/deploy/cleanup.sh
 bash ~/firefly-new/firefly/deploy/install.sh
 
 # 4. Remove the temporary files and the copied zip
-rm -rf ~/firefly-new ~/firefly_vX.Y.Z.zip
+rm -rf ~/firefly-new ~/FireFly-RK3326-X.Y.Z.zip
 
 # 5. Reboot: this also applies the new serial-port permission
 sudo reboot
@@ -130,8 +150,10 @@ sudo reboot
 What the installer does:
 
 - installs prebuilt system packages (`python3-pygame`,
-  `python3-cryptography`, `python3-serial`, `fonts-dejavu-core`), so nothing
-  is compiled; that matters because the handheld has no swap,
+  `python3-cryptography`, `python3-serial`, `fonts-dejavu-core`, and the
+  voice-note decoders `opus-tools` and `codec2`), so nothing is compiled;
+  that matters because the handheld has no swap. Packages already present
+  are not downloaded again,
 - puts the app in `/home/ark/firefly`, on the Linux home partition; the
   exFAT `/roms` partition can't protect a private key with file permissions,
 - installs Reticulum (`rns`) and LXMF in a private Python environment,
@@ -151,12 +173,39 @@ instance and use its settings instead of its own.
    screen appears while it starts.
 2. **SETUP**: set your display name. Check that the radio settings match
    your network exactly (for Stump: *Load Stump defaults*). Radio changes
-   apply by themselves within a couple of seconds.
+   apply by themselves within a couple of seconds. If a technician gave you
+   a `radio.json`, see [Radio settings from a technician](#radio-settings-from-a-technician-radiojson).
 3. **NETWORK**: under LORA RADIO you should see **● online on …** with the
    board's chip and firmware. Press A to announce yourself.
 4. **PEERS**: people appear as they announce. A opens a chat.
 
 To quit, press **Select + Start**.
+
+### Radio settings from a technician (radio.json)
+
+When a Stump technician provisions a Heltec V3 as your handheld's radio,
+the Stump provisioner saves the settings it flashed as `radio.json`. Copy
+that file onto the SD card, in any of these places:
+
+- `/roms/firefly/radio.json` (the `firefly` folder at the top of the
+  card's EASYROMS partition, easy from a computer),
+- `/roms/ports/meshcommandermax/radio.json` (where the provisioner says to
+  put it),
+- `/home/ark/.firefly/radio.json`.
+
+At its next start FireFly applies it (frequency, bandwidth, spreading
+factor, coding rate, TX power and the network passphrase, if any) and
+says so. Each file is applied once: if you change the settings by hand
+afterwards, they stay until a different `radio.json` arrives. SETUP →
+*Load radio.json from SD card* applies it again on demand.
+
+### Network passphrase
+
+Some meshes protect their radio channel with a **network passphrase**
+(Reticulum's *interface access code*, IFAC). Only then: SETUP → *Network
+passphrase* → *Set passphrase*. It must match the other nodes exactly; with
+a wrong or missing passphrase the radio stays silent, without any error.
+Leave it at *none* for the Stump network defaults and for most meshes.
 
 ---
 
@@ -189,13 +238,34 @@ Get the new zip onto the handheld as in section 4, then:
 
 ```bash
 mkdir -p ~/firefly-new
-unzip -o ~/firefly_vX.Y.Z.zip -d ~/firefly-new
+unzip -o ~/FireFly-RK3326-X.Y.Z.zip -d ~/firefly-new
 bash ~/firefly-new/firefly/deploy/install.sh
-rm -rf ~/firefly-new ~/firefly_vX.Y.Z.zip
+rm -rf ~/firefly-new ~/FireFly-RK3326-X.Y.Z.zip
 ```
 
 **Don't run `cleanup.sh` for a normal update.** It deletes your messages
 (it keeps your address and settings).
+
+### Installing off-grid
+
+An update needs **no internet** when the new version asks for nothing new:
+the installer skips the system packages that are already there and keeps
+the Reticulum and LXMF versions already installed if they are the ones this
+version was tested with (each release's CHANGELOG says when that changes).
+A zip from a Stump node therefore installs entirely off-grid.
+
+A **first** install needs internet once. If the handheld can't get online,
+two things are needed beforehand:
+
+- the system packages: without `python3-pygame`, `python3-cryptography`,
+  `python3-serial` or `python3-venv` the installer stops and says which are
+  missing; without `codec2` or `opus-tools` it carries on, and voice notes
+  in those formats show but don't play until you run it again online;
+- Reticulum and LXMF: download `rns-1.5.6-py3-none-any.whl` and
+  `lxmf-1.2.0-py3-none-any.whl` from PyPI on a computer
+  (`pip download --no-deps rns==1.5.6 lxmf==1.2.0`) and put them in a
+  `wheels` folder next to `deploy` (`~/firefly-new/firefly/wheels/`). The
+  installer uses them instead of the internet.
 
 ---
 

@@ -613,6 +613,8 @@ class NetworkTab(Screen):
             out.append(("m", "Using a shared Reticulum instance (rnsd): its config decides the interfaces."))
         if core.status_note:
             out.append(("err", core.status_note))
+        if getattr(core, "radio_json_note", ""):
+            out.append(("m", core.radio_json_note))
         for i in self._stats.get("interfaces", []):
             up = i.get("status")
             if not up and "RNode" in i.get("name", "") and core.shared_instance:
@@ -718,7 +720,8 @@ def _bytes(n):
 def _radio_summary(r):
     state = "on" if r["enabled"] else "off"
     return (f"LoRa {state}: {r['frequency'] / 1e6:.3f} MHz  BW {r['bandwidth'] / 1000:g} kHz  "
-            f"SF{r['spreading_factor']}  CR 4/{r['coding_rate']}  {r['tx_power']} dBm")
+            f"SF{r['spreading_factor']}  CR 4/{r['coding_rate']}  {r['tx_power']} dBm"
+            + ("  + passphrase" if r.get("ifac_passphrase") or r.get("ifac_netname") else ""))
 
 
 # ======================================================================== SETUP
@@ -748,6 +751,8 @@ class SettingsTab(ListScreen):
             ("sf", "Spreading factor", f"SF{r['spreading_factor']}"),
             ("cr", "Coding rate", f"4/{r['coding_rate']}"),
             ("txp", "TX power", f"{r['tx_power']} dBm"),
+            ("ifac", "Network passphrase", _ifac_label(r)),
+            ("rjson", "Load radio.json from SD card", ""),
             ("head", "OTHER LINKS", None),
             ("auto", "Wi-Fi/LAN discovery", "on" if s["auto_interface"] else "off"),
             ("tcp", "Internet/TCP peers", f"{len(s['tcp_peers'])} configured"),
@@ -859,6 +864,27 @@ class SettingsTab(ListScreen):
         elif key == "preset":
             r.update(STUMP_RADIO); self._radio()
             app.toast("Stump network defaults loaded")
+        elif key == "ifac":
+            def ask(title, field, limit):
+                app.push(Compose(app, title, lambda t, f=field: self._set_ifac(f, t), initial=r.get(field, ""),
+                                 send_label="OK", max_len=limit, show_packet_meter=False))
+            items = [("Set passphrase", lambda: ask("Network passphrase", "ifac_passphrase", 128)),
+                     ("Set network name (rarely needed)", lambda: ask("Network name", "ifac_netname", 64))]
+            if r.get("ifac_passphrase") or r.get("ifac_netname"):
+                items.append(("Clear: no passphrase", self._clear_ifac))
+            app.push(Menu(app, "Network passphrase", items,
+                          subtitle="Only if your mesh uses one (IFAC). It must match exactly, or nothing is heard"))
+        elif key == "rjson":
+            from .. import radiojson
+            path = radiojson.find(core.paths.home)
+            if not path:
+                app.toast("No radio.json found (looked in /roms/firefly and /roms/ports/meshcommandermax)", 5)
+                return
+            ok, msg = radiojson.apply(s, path, force=True)
+            core.radio_json_note = msg if ok else "radio.json not used: " + msg
+            if ok:
+                self._radio()
+            app.toast(core.radio_json_note, 5)
         elif key == "freq":
             app.push(NumberEditor(app, "Frequency", r["frequency"], 25_000, 1_000_000, 137_000_000, 1_020_000_000,
                                   lambda v: f"{v / 1e6:.3f} MHz", self._set_freq,
@@ -895,6 +921,18 @@ class SettingsTab(ListScreen):
         self.app.core.set_display_name(name)
         nick = stump.clean_nick(name)
         self.app.toast("Announced as " + name + ("" if nick == name[:16] else f"  (Stump nick: {nick})"))
+
+    def _set_ifac(self, field, text):
+        self.app.core.settings["radio"][field] = text.strip()
+        self._radio()
+        self.app.toast("Passphrase saved: the radio reconnects with it" if text.strip()
+                       else "Cleared", 3)
+
+    def _clear_ifac(self):
+        r = self.app.core.settings["radio"]
+        r["ifac_passphrase"] = r["ifac_netname"] = ""
+        self._radio()
+        self.app.toast("No passphrase: open mesh", 3)
 
     def _set_freq(self, v):
         self.app.core.settings["radio"]["frequency"] = v
@@ -970,6 +1008,14 @@ class SettingsTab(ListScreen):
         if rows[self.sel][0] == "head":
             self.sel += 1
         draw_list(surf, f, rows, self.app.content_top, row, f.line + 8)
+
+
+def _ifac_label(r):
+    if r.get("ifac_passphrase") and r.get("ifac_netname"):
+        return "set (+ name)"
+    if r.get("ifac_passphrase") or r.get("ifac_netname"):
+        return "set"
+    return "none"
 
 
 def _rot_label(setting, actual):

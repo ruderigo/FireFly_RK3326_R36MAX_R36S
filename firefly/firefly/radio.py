@@ -18,13 +18,37 @@ APPLY_DELAY_S = 1.5        # wait for the user to finish changing settings
 IDLE_POLL_S = 3.0
 RETRY_NOT_RNODE_S = 30.0   # a port that didn't answer as an RNode
 RETRY_REFUSED_S = 60.0     # an RNode that refused the settings (retried at once if settings change)
+DETECT_WAIT_S = 8.0        # how long a USB RNode may take to answer after the port opens
+DETECT_RESEND_S = 0.5
 
 PLATFORMS = {KISS.PLATFORM_ESP32: "ESP32", KISS.PLATFORM_NRF52: "nRF52", KISS.PLATFORM_AVR: "AVR"}
 
 
 class FireFlyRNode(RNodeInterface):
-    """RNodeInterface that reports old firmware instead of shutting the app down."""
+    """RNodeInterface that reports old firmware instead of shutting the app down,
+    and waits for a USB RNode that is still booting."""
     firmware_too_old = False
+
+    def detect(self):
+        """Opening the serial port resets ESP32 boards with an auto-reset circuit
+        (Heltec V3 and most CP2102/CH340 boards). Reticulum asks once and gives the
+        board 2.2 s to answer; a board that boots slower is reported as 'not an
+        RNode', and every retry reopens the port and resets it again, so it can
+        miss forever. Here the question is repeated until the board answers, for
+        up to DETECT_WAIT_S, without reopening the port."""
+        super().detect()
+        if getattr(self, "use_tcp", False) or getattr(self, "use_ble", False):
+            return                               # also called as a TCP keepalive: never block there
+        end = time.time() + DETECT_WAIT_S
+        next_ask = time.time() + DETECT_RESEND_S
+        while not self.detected and time.time() < end:
+            time.sleep(0.05)
+            if time.time() >= next_ask:
+                next_ask = time.time() + DETECT_RESEND_S
+                try:
+                    super().detect()
+                except Exception:
+                    return
 
     def validate_firmware(self):
         ok = (self.maj_version > self.REQUIRED_FW_VER_MAJ or
@@ -104,7 +128,8 @@ class RadioManager:
     def _params(self):
         r = self.core.settings["radio"]
         return (int(r["frequency"]), int(r["bandwidth"]), int(r["tx_power"]),
-                int(r["spreading_factor"]), int(r["coding_rate"]))
+                int(r["spreading_factor"]), int(r["coding_rate"]),
+                r.get("ifac_netname") or "", r.get("ifac_passphrase") or "")
 
     def _tick(self):
         s = self.core.settings
@@ -167,7 +192,7 @@ class RadioManager:
         return ports
 
     def _try(self, port, params, prefer=False):
-        freq, bw, txp, sf, cr = params
+        freq, bw, txp, sf, cr, netname, passphrase = params
         self.status.set(RadioStatus.CONNECTING, port=port, detail="asking the device if it is an RNode")
         cfg = {"name": "RNode LoRa", "port": port, "frequency": freq, "bandwidth": bw, "txpower": txp,
                "spreadingfactor": sf, "codingrate": cr}
@@ -181,7 +206,10 @@ class RadioManager:
 
         if iface is not None and iface.online and not too_old:
             try:
-                self.core.reticulum._add_interface(iface)
+                # A network name / passphrase (IFAC) only if this mesh uses one: then every
+                # packet is signed with it, and packets without it are dropped.
+                self.core.reticulum._add_interface(iface, ifac_netname=netname or None,
+                                                   ifac_netkey=passphrase or None)
             except Exception as e:
                 RNS.log(f"Could not register RNode interface: {e}", RNS.LOG_ERROR)
                 _quiet_detach(iface)
@@ -195,7 +223,7 @@ class RadioManager:
             self.status.set(RadioStatus.ONLINE, port=port, board=board)
             if port.startswith("/dev/"):
                 self._remember_port(port)
-            RNS.log(f"RNode online on {port} ({board})")
+            RNS.log(f"RNode online on {port} ({board})" + (", with an interface access code" if netname or passphrase else ""))
             try:
                 self.core.on_interface_online()
             except Exception:

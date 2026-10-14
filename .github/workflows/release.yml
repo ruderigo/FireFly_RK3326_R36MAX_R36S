@@ -1,7 +1,8 @@
 name: Release
 
 # Push a tag like v0.4.0 (matching __version__ in firefly/firefly/__init__.py) to
-# zip the firefly/ folder as firefly_v0.4.0.zip and publish it as a GitHub Release,
+# zip the firefly/ folder as FireFly-RK3326-0.4.0.zip (the name LaBuche-Stump nodes look for
+# in their SD card's tools folder) and publish it as a GitHub Release,
 # with that version's CHANGELOG.md section as the release notes.
 # "Run workflow" by hand builds the same zip as a downloadable artifact, no release.
 
@@ -30,9 +31,9 @@ jobs:
             exit 1
           fi
 
-      - name: Build firefly_v${{ steps.v.outputs.version }}.zip
+      - name: Build FireFly-RK3326-${{ steps.v.outputs.version }}.zip
         run: |
-          OUT="firefly_v${{ steps.v.outputs.version }}.zip"
+          OUT="FireFly-RK3326-${{ steps.v.outputs.version }}.zip"
           find firefly -name __pycache__ -prune -exec rm -rf {} +
           zip -qr -X "$OUT" firefly
           unzip -l "$OUT" | tail -n 1
@@ -41,15 +42,15 @@ jobs:
         run: |
           V="${{ steps.v.outputs.version }}"
           awk -v v="## $V" '$0==v{on=1;next} /^## /{on=0} on' CHANGELOG.md > notes.md
-          printf '\n**Install:** download `firefly_v%s.zip` below and follow [INSTALL.md](%s/%s/blob/main/INSTALL.md).\n' \
+          printf '\n**Install:** download `FireFly-RK3326-%s.zip` below and follow [INSTALL.md](%s/%s/blob/main/INSTALL.md).\n' \
             "$V" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" >> notes.md
           cat notes.md
 
       - name: Keep the zip as a build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: firefly_v${{ steps.v.outputs.version }}.zip
-          path: firefly_v${{ steps.v.outputs.version }}.zip
+          name: FireFly-RK3326-${{ steps.v.outputs.version }}.zip
+          path: FireFly-RK3326-${{ steps.v.outputs.version }}.zip
 
       - name: Publish the release
         uses: softprops/action-gh-release@v2
@@ -57,4 +58,4 @@ jobs:
         with:
           name: FireFly for RK3326 ${{ steps.v.outputs.version }}
           body_path: notes.md
-          files: firefly_v${{ steps.v.outputs.version }}.zip
+          files: FireFly-RK3326-${{ steps.v.outputs.version }}.zip

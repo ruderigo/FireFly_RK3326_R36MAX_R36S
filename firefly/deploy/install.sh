@@ -1,7 +1,9 @@
 #!/bin/bash
 # Installs FireFly on the handheld. Run it over SSH from the unzipped folder:
 #   bash deploy/install.sh
-# Needs an internet connection on the handheld (Wi-Fi or USB Ethernet).
+# The first install needs internet on the handheld (Wi-Fi or USB Ethernet).
+# Updating an installed FireFly does not: a zip from a Stump's /tools page
+# installs off-grid when nothing new is needed from the internet.
 set -e
 APP="$HOME/firefly"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -40,10 +42,26 @@ if [ -d "$OLD_APP" ] && [ "$(realpath "$OLD_APP")" != "$(realpath "$HERE")" ]; t
 fi
 
 echo "== 1/5 System packages (prebuilt: no compiling, so no swap needed)"
-sudo apt-get update
-# opus-tools and codec2 decode voice notes (Opus and Codec2, the two LXMF voice formats)
-sudo apt-get install -y python3-venv python3-pygame python3-cryptography python3-serial fonts-dejavu-core \
-  opus-tools codec2
+# Needed to run at all:
+NEEDED="python3-venv python3-pygame python3-cryptography python3-serial"
+# Nice to have: the font, and the voice-note decoders (opus-tools: Opus, codec2: Codec 2).
+OPTIONAL="fonts-dejavu-core opus-tools codec2"
+missing() { for p in "$@"; do dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "ok installed" || echo "$p"; done; }
+TODO=$(missing $NEEDED $OPTIONAL | tr '\n' ' ')
+if [ -z "${TODO// }" ]; then
+  echo "   all present, nothing to download"
+elif sudo apt-get update && sudo apt-get install -y $TODO; then
+  :
+else
+  STILL=$(missing $NEEDED | tr '\n' ' ')
+  if [ -n "${STILL// }" ]; then
+    echo "ERROR: could not install $STILL (no internet?)."
+    echo "       The first install needs internet once: connect Wi-Fi or USB Ethernet and run this again."
+    exit 1
+  fi
+  echo "   ! no internet: carrying on without $(missing $OPTIONAL | tr '\n' ' ')"
+  echo "     (voice notes in those formats show but won't play until you run this again online)"
+fi
 
 echo "== 2/5 App files -> $APP (btrfs home, not exFAT /roms)"
 if [ ! -f "$HERE/firefly/core.py" ]; then
@@ -65,7 +83,19 @@ echo "== 3/5 Reticulum + LXMF in a private environment"
 export PYTHONNOUSERSITE=1
 [ -d "$APP/venv" ] || python3 -m venv --system-site-packages "$APP/venv"
 # Exactly the versions this FireFly release was tested with.
-"$APP/venv/bin/pip" install --upgrade "rns==1.5.6" "lxmf==1.2.0"
+RNS_V=1.5.6; LXMF_V=1.2.0
+have() { "$APP/venv/bin/python" -c "import importlib.metadata as m, sys; sys.exit(0 if m.version('$1') == '$2' else 1)" 2>/dev/null; }
+if have rns "$RNS_V" && have lxmf "$LXMF_V"; then
+  echo "   rns $RNS_V and lxmf $LXMF_V already installed, nothing to download"
+elif ls "$HERE"/wheels/rns-"$RNS_V"-*.whl "$HERE"/wheels/lxmf-"$LXMF_V"-*.whl >/dev/null 2>&1; then
+  echo "   installing from the wheels/ folder (no internet needed)"
+  "$APP/venv/bin/pip" install --no-index --find-links "$HERE/wheels" "rns==$RNS_V" "lxmf==$LXMF_V"
+elif ! "$APP/venv/bin/pip" install --upgrade "rns==$RNS_V" "lxmf==$LXMF_V"; then
+  echo "ERROR: could not download Reticulum $RNS_V and LXMF $LXMF_V (no internet?)."
+  echo "       Connect Wi-Fi or USB Ethernet and run this again, or put rns-$RNS_V-py3-none-any.whl and"
+  echo "       lxmf-$LXMF_V-py3-none-any.whl in a 'wheels' folder next to 'deploy' (see INSTALL.md)."
+  exit 1
+fi
 
 echo "== 4/5 Serial port access for the LoRa radio"
 sudo usermod -aG dialout "$USER" || true

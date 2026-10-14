@@ -14,7 +14,7 @@ re-implementation, so compatibility comes from the reference code itself.
 
 ![FireFly screens: chats, a conversation, a Stump node, the keyboard, network and setup](docs/screenshots.png)
 
-**Status:** v0.6.2. Runs on RK3326 handhelds with the dArkOS image of
+**Status:** v0.7.1. Runs on RK3326 handhelds with the dArkOS image of
 [arkos4clone](https://github.com/lcdyk0517/arkos4clone); tested on an R36MAX.
 See [Supported devices](#supported-devices).
 
@@ -24,22 +24,27 @@ Full step-by-step guide: **[INSTALL.md](INSTALL.md)**. In short:
 
 1. Flash RNode firmware onto a LoRa board (`rnodeconf --autoinstall`) and
    plug it into the handheld's USB.
-2. Download `firefly_vX.Y.Z.zip` from the [latest release](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S/releases/latest) and copy it
+2. Download `FireFly-RK3326-X.Y.Z.zip` from the [latest release](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S/releases/latest) and copy it
    to the handheld with `scp` (or download it on the handheld with `wget`).
+   LaBuche-Stump nodes also offer it on their own Wi-Fi, under About → Apps
+   & Handhelds.
 3. Over SSH, unpack it to a temporary folder and run
    `deploy/cleanup.sh`, then `deploy/install.sh`. Reboot.
 
 The release zip holds the `firefly/` folder of this repository at that
 version: the zip is what you copy to the handheld, the folder is there to
-read and browse.
+read and browse. Its name is the one Stump nodes look for on their SD card
+(`FireFly-RK3326-<version>.zip`), so a technician can drop it in a node's
+`tools/` folder as it is.
 4. Open **Ports → FireFly**.
 
 The installer uses prebuilt Debian packages (nothing compiles), keeps the
 app in `/home/ark/firefly` and your data in `/home/ark/.firefly`, and adds a
 Ports entry.
 
-**Updating** replaces only the app: your identity, contacts and messages
-stay. **Rolling back** is installing an earlier zip from the repository
+The first install needs internet once (Wi-Fi or USB Ethernet).
+**Updating** needs none: it replaces only the app, and your identity,
+contacts and messages stay. **Rolling back** is installing an earlier zip from the repository
 history the same way. Both
 are described in [INSTALL.md](INSTALL.md#8-updating-to-a-new-version).
 
@@ -157,6 +162,13 @@ Ports entry.
   coding rate and TX power retune the radio a moment after you change them,
   with no restart. One press loads the Stump network defaults
   (915.0 MHz / 125 kHz / SF8 / 4/5 / 7 dBm).
+- **radio.json from a Stump technician**: the Stump provisioner saves the
+  settings it flashed onto a handheld's Heltec as `radio.json`. Put it on
+  the SD card (`/roms/firefly/`, or where the provisioner says,
+  `/roms/ports/meshcommandermax/`) and FireFly applies it at the next start,
+  once per file, and says so.
+- **Network passphrase (IFAC)**, for meshes that protect their channel with
+  one: set it in SETUP, or let `radio.json` carry it. Applies live.
 - **Clear radio status**: online (with the board's chip and firmware), no
   radio plugged in, searching, or *refused*: an RNode answered but won't use
   these settings (for example a frequency outside its band), or its firmware
@@ -182,6 +194,12 @@ On top of that, `firefly/stump.py` provides:
   (263 of 295 bytes, empty title, no fields, opportunistic, never via a
   propagation node), a single challenge in flight, restart on expiry,
 - Stump's nick cleaning rules (the name editor shows your Stump nick).
+
+**FireFly on a Stump's SD card.** Stump nodes (Beta A) offer FireFly for
+download on their own Wi-Fi, from About → Apps & Handhelds and `/tools`,
+finding it by name: `FireFly-RK3326-<version>.zip` in the card's `tools`
+folder, the highest version winning. From 0.7.0 that is this repository's
+release zip name. An update downloaded from a Stump installs without internet.
 
 In a chat with a Stump node, lines are coloured by meaning (DMs purple,
 activity dim) and the peer menu offers *verify my identity*, `/rooms` and
@@ -247,6 +265,7 @@ From the `firefly/` folder:
     python3 tests/run_integration.py   # LXMF round trips, links, Stump /auth, over localhost TCP
     python3 tests/run_propagation.py   # offline peer: fallback to a propagation node
     python3 tests/run_radio.py         # radio manager against simulated RNodes (no hardware needed)
+    python3 tests/run_radiojson.py     # the Stump provisioner's radio.json, and the network passphrase
     python3 tests/run_voice.py         # voice notes: Codec 2 spec test vector, Opus, SD copy (needs opusdec, c2dec)
     python3 tests/run_block.py         # delete and block, across a restart
     python3 tests/run_chat_selector.py # chat selector: any voice note, details, new arrivals
