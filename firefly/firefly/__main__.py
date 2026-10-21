@@ -136,7 +136,7 @@ def main():
             from .paths import default_paths as _dp
             rot = args.rotate or Settings(_dp(args.home, log=lambda *a: None).settings).get("screen_rotation", "auto")
             splash = Splash(args.fullscreen, size, rot)
-            splash.show(["FireFly", "Starting Reticulum and LXMF…", "(first start creates your identity)"])
+            splash.show([f"FireFly {__version__}", "Starting Reticulum and LXMF…", "(first start creates your identity)"])
         from .core import Core
         core = Core(default_paths(args.home, log=_log), log=_log)
         _log("starting core")
@@ -153,7 +153,7 @@ def main():
         _log("FATAL\n" + tb)
         if splash:
             last = [l for l in tb.strip().splitlines() if l.strip()][-6:]
-            splash.show(["FireFly could not start", *last, "", "Details: ~/firefly/launch.log",
+            splash.show([f"FireFly {__version__} could not start", *last, "", "Details: ~/firefly/launch.log",
                          "Press any button to exit"], color=(0xe0, 0x7a, 0x5a))
             splash.wait_any_button(60)
     finally:
