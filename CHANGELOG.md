@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.3
+- The version number shows on the start-up screen ("FireFly 0.7.3"), on the
+  error screen if start-up fails, and at the bottom of SETUP
+  ("FireFly version").
+
 ## 0.7.2
 Follows LaBuche-Stump 1.0.0-beta.34 over LoRa/LXMF.
 - **`#lxmf` is now `#lora-mesh`.** FireFly reads both names as the same room

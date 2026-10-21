@@ -14,7 +14,7 @@ re-implementation, so compatibility comes from the reference code itself.
 
 ![FireFly screens: chats, a conversation, a Stump node, the keyboard, network and setup](docs/screenshots.png)
 
-**Status:** v0.7.2. Runs on RK3326 handhelds with the dArkOS image of
+**Status:** v0.7.3. Runs on RK3326 handhelds with the dArkOS image of
 [arkos4clone](https://github.com/lcdyk0517/arkos4clone); tested on an R36MAX.
 See [Supported devices](#supported-devices).
 

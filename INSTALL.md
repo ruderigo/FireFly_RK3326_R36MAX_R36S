@@ -10,7 +10,7 @@ In the commands below, replace:
 - `<handheld-ip>` with your handheld's IP address (shown in its Wi-Fi or
   network info screen),
 - `FireFly-RK3326-X.Y.Z.zip` with the zip's file name (currently
-  `FireFly-RK3326-0.7.2.zip`; releases up to 0.6.2 were named `firefly_vX.Y.Z.zip`).
+  `FireFly-RK3326-0.7.3.zip`; releases up to 0.6.2 were named `firefly_vX.Y.Z.zip`).
 
 ---
 
