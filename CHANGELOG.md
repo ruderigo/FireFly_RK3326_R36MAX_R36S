@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.2
+Follows LaBuche-Stump 1.0.0-beta.34 over LoRa/LXMF.
+- **`#lxmf` is now `#lora-mesh`.** FireFly reads both names as the same room
+  (older nodes still say `#lxmf`), in the landing message, replies, `/rooms`
+  and room batch titles.
+- **Chained Stumps:** `#wifi-mesh` batches are filed under their own room;
+  people on other Stumps show as `nick@thatstump`, in rooms and DMs.
+- **`⧗` now also means "lines too fast"** (3 at once, then one every 2 s):
+  the line wasn't passed on. FireFly marks your latest line to that Stump as
+  failed with "send it again", and a late delivery proof doesn't hide that.
+- **New `[LoRa]` room tier** (`⊘ #lora-mesh LoRa — …`): shown with what it
+  means. `/rooms` reads any tier tag, not only `[minted]`/`[hybrid]`.
+- **Never looks like a Stump:** a Stump now takes LXMF batches titled
+  `#lora-mesh`/`#wifi-mesh`, and lines starting `[DM>`, for another
+  Stump's. FireFly never sends those to a Stump.
+- The `stump.node` beacon's new fifth item (web addresses) is accepted, as
+  were four-item beacons.
 ## 0.7.1
 - **Fixed: a USB RNode could stay undetected until FireFly was restarted.**
   Opening the serial port resets ESP32 boards such as the Heltec V3, and

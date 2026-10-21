@@ -14,7 +14,7 @@ re-implementation, so compatibility comes from the reference code itself.
 
 ![FireFly screens: chats, a conversation, a Stump node, the keyboard, network and setup](docs/screenshots.png)
 
-**Status:** v0.7.1. Runs on RK3326 handhelds with the dArkOS image of
+**Status:** v0.7.2. Runs on RK3326 handhelds with the dArkOS image of
 [arkos4clone](https://github.com/lcdyk0517/arkos4clone); tested on an R36MAX.
 See [Supported devices](#supported-devices).
 
@@ -265,6 +265,7 @@ From the `firefly/` folder:
     python3 tests/run_integration.py   # LXMF round trips, links, Stump /auth, over localhost TCP
     python3 tests/run_propagation.py   # offline peer: fallback to a propagation node
     python3 tests/run_radio.py         # radio manager against simulated RNodes (no hardware needed)
+    python3 tests/run_stump_protocol.py # Stump 1.0.0-beta.34 lines: #lora-mesh, nick@stump, ⧗, [LoRa]
     python3 tests/run_radiojson.py     # the Stump provisioner's radio.json, and the network passphrase
     python3 tests/run_voice.py         # voice notes: Codec 2 spec test vector, Opus, SD copy (needs opusdec, c2dec)
     python3 tests/run_block.py         # delete and block, across a restart

@@ -308,7 +308,7 @@ class ChatScreen(Screen):
         lines = []   # (font, text, color)
         if is_stump and not out:
             if m["title"] and m["title"].startswith("#"):
-                lines.append((f.mono_small, m["title"], T.EMBER))     # the room this batch belongs to
+                lines.append((f.mono_small, "#" + stump.room_name(m["title"]), T.EMBER))   # the room this batch belongs to
             for parsed in stump.parse_message(m["content"], m["title"] or ""):
                 lines += [(f.body, ln, c) for ln, c in _stump_render(parsed, f, maxw - 20)]
         elif m["content"]:
@@ -403,13 +403,14 @@ def _stump_render(p, f, width):
     if k == "dm":
         return [(ln, T.DM_BODY) for ln in D.wrap(f.body, f"[DM] {p['author']}: {p['text']}", width)]
     if k == "too_fast":
-        return [(ln, T.ERROR) for ln in D.wrap(f.body, "⧗ too many voice notes too fast", width)]
+        return [(ln, T.ERROR) for ln in D.wrap(f.body, "⧗ slow down: your last line wasn't passed on, send it again", width)]
     if k in ("join", "part", "rename", "topic", "moved", "names", "room", "no_such_nick"):
         return [(ln, T.DIM) for ln in D.wrap(f.body, _stump_text(p), width)]
     if k == "action":
         return [(ln, T.ACTION) for ln in D.wrap(f.body, f"* {p['nick']} {p['text']}", width)]
     if k == "refused":
-        hint = "  (Y → verify my identity)" if p["tier"] == "minted" else ""
+        hint = {"minted": "  (Y → verify my identity)", "hybrid": "  (Y → verify my identity)",
+                "LoRa": "  (for people on LoRa and those invited)"}.get(p["tier"], "")
         return ([(ln, T.ERROR) for ln in D.wrap(f.body, f"⊘ #{p['room']} is {p['tier']}{hint}", width)] +
                 [(ln, T.DIM) for ln in D.wrap(f.body, p["text"], width)])
     if k in ("already_in", "unknown_command"):
