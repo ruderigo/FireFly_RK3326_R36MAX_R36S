@@ -51,6 +51,10 @@ jobs:
         timeout-minutes: 3
         run: python tests/run_radio.py
 
+      - name: Stump 1.0.0-beta.34 line protocol
+        timeout-minutes: 2
+        run: python tests/run_stump_protocol.py
+
       - name: radio.json from the Stump provisioner, and the network passphrase
         timeout-minutes: 3
         run: python tests/run_radiojson.py

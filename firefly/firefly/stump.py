@@ -66,7 +66,27 @@ def beacon_hash_for(identity):
 # ---------------------------------------------------------------- line protocol
 _DM = re.compile(r"^\[DM\] <([^>]+)>: (.*)$", re.S)
 _ROOM_MSG = re.compile(r"^<([^>]+)> (.*)$", re.S)
-_ROOM_LIST = re.compile(r"^#(\S+) ·(\d+)\s*(\[(minted|hybrid)\])?\s*(.*)$")
+_ROOM_LIST = re.compile(r"^#(\S+) ·(\d+)\s*(\[([A-Za-z][\w-]*)\])?\s*(.*)$")
+
+# Stump 1.0.0-beta.4 renamed #lxmf to #lora-mesh; older nodes still say lxmf.
+ROOM_ALIASES = {"lxmf": "lora-mesh"}
+# Titles a Stump reads as "this batch comes from another Stump" (1.0.0-beta.21+):
+# a client must never send them, nor a line starting "[DM>".
+STUMP_ONLY_TITLES = ("#lora-mesh", "#wifi-mesh", "#lxmf")
+
+
+def room_name(name):
+    name = (name or "").lstrip("#")
+    return ROOM_ALIASES.get(name, name)
+
+
+def safe_for_stump(text, title=""):
+    """(text, title) a Stump can't take for another Stump's batch."""
+    if title and title.strip().lower() in STUMP_ONLY_TITLES:
+        title = ""
+    if text.startswith("[DM>"):
+        text = "\u200b" + text            # invisible, but no longer the inter-Stump DM form
+    return text, title
 
 
 TOKEN_SEP = " — "   # replies a client acts on: "<token> — <sentence for people>"
@@ -83,11 +103,11 @@ def _token_reply(line):
     sym, _, args = token.partition(" ")
     args = args.split()
     if sym == "=" and args and args[0].startswith("#"):
-        return {"kind": "already_in", "room": args[0][1:], "text": sentence}
+        return {"kind": "already_in", "room": room_name(args[0]), "text": sentence}
     if sym == "?" and args:
         return {"kind": "unknown_command", "command": args[0], "text": sentence}
     if sym == "⊘" and len(args) >= 2 and args[0].startswith("#"):
-        return {"kind": "refused", "room": args[0][1:], "tier": args[1], "text": sentence}
+        return {"kind": "refused", "room": room_name(args[0]), "tier": args[1], "text": sentence}
     return None
 
 
@@ -114,11 +134,11 @@ def parse_line(line):
         body = line[2:]
         if body.startswith("#"):
             room, _, topic = body.partition(" ")
-            return {"kind": "topic", "room": room[1:], "topic": topic}
+            return {"kind": "topic", "room": room_name(room), "topic": topic}
         old, _, new = body.partition(" → ")
         return {"kind": "rename", "old": old.strip(), "new": new.strip()}
     if line.startswith("→ #"):
-        return {"kind": "moved", "room": line[3:].strip()}
+        return {"kind": "moved", "room": room_name(line[3:].strip())}
     if line.startswith("⊖ "):
         return {"kind": "no_such_nick", "nick": line[2:].strip()}
     if line.startswith("* "):
@@ -126,11 +146,11 @@ def parse_line(line):
         return {"kind": "action", "nick": nick, "text": text}
     m = _ROOM_LIST.match(line)
     if m:
-        return {"kind": "room", "room": m.group(1), "count": int(m.group(2)),
+        return {"kind": "room", "room": room_name(m.group(1)), "count": int(m.group(2)),
                 "tier": m.group(4) or "open", "topic": m.group(5)}
     if line.startswith("#") and ": " in line:
         room, _, names = line.partition(": ")
-        return {"kind": "names", "room": room[1:], "names": [n.strip() for n in names.split(",") if n.strip()]}
+        return {"kind": "names", "room": room_name(room), "names": [n.strip() for n in names.split(",") if n.strip()]}
     m = _ROOM_MSG.match(line)
     if m:
         return {"kind": "msg", "nick": m.group(1), "text": m.group(2)}
@@ -147,7 +167,7 @@ def parse_message(content, title=""):
     lines are filed under that room, not under the room the client thinks it
     is in, because lines queued just before a /join may still arrive. DM-only
     batches have no title (each [DM] line names its author)."""
-    room = title[1:] if title and title.startswith("#") else None
+    room = room_name(title) if title and title.startswith("#") else None
     items = []
     for l in content.split("\n"):
         if not l.strip():

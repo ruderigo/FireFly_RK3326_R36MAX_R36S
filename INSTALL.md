@@ -10,7 +10,7 @@ In the commands below, replace:
 - `<handheld-ip>` with your handheld's IP address (shown in its Wi-Fi or
   network info screen),
 - `FireFly-RK3326-X.Y.Z.zip` with the zip's file name (currently
-  `FireFly-RK3326-0.7.1.zip`; releases up to 0.6.2 were named `firefly_vX.Y.Z.zip`).
+  `FireFly-RK3326-0.7.2.zip`; releases up to 0.6.2 were named `firefly_vX.Y.Z.zip`).
 
 ---
 
@@ -113,7 +113,7 @@ Wi-Fi adapter), it can fetch it directly:
 
 ```bash
 cd /home/ark
-wget -O FireFly-RK3326-X.Y.Z.zip "http://<stump-address>/tool?f=FireFly-RK3326-X.Y.Z.zip"
+wget -O FireFly-RK3326-X.Y.Z.zip "http://<stump-address>/tool?f=firefly%2FFireFly-RK3326-X.Y.Z.zip"
 ```
 
 A Stump's Wi-Fi has no internet, so a **first** install from it still needs

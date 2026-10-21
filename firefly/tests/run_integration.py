@@ -71,8 +71,8 @@ if sess.identity_hash != core.identity.hash.hex():
 
 # Stump protocol: landing room, titled room batches, reply tokens
 core.send(node, "hello room")
-wait(lambda: (core.stump_state.get(node) and core.stump_state[node].room) == "lxmf", 30,
-     "Stump: '→ #lxmf' tells FireFly which room it landed in")
+wait(lambda: (core.stump_state.get(node) and core.stump_state[node].room) == "lora-mesh", 30,
+     "Stump: '→ #lxmf' (a pre-beta.4 node) tells FireFly it landed in #lora-mesh")
 wait(lambda: any(m["title"] == "#lxmf" for m in core.store.messages(node) if not m["outgoing"]), 20,
      "Stump: room batch carries its room as the LXMF title")
 core.send(node, "/join #vip")

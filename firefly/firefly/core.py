@@ -345,6 +345,8 @@ class Core:
         text = text.rstrip()
         if not text:
             return None
+        if peer_hex in self.stumps:
+            text, title = stump.safe_for_stump(text, title)
         msg_id = self.store.add_message(peer_hex, True, text, "pending", title=title)
         threading.Thread(target=self._send_worker, args=(msg_id, peer_hex, text, method, title),
                          daemon=True).start()
@@ -402,6 +404,9 @@ class Core:
         state = "stored" if lxm.method == LXMessage.PROPAGATED else "delivered"
         with self.lock:
             self.outbound.pop(msg_id, None)
+            row = self.store.message(msg_id)
+            if row and row["state"] == "failed" and (row["reason"] or "").startswith("the Stump said"):
+                return       # the node received it but refused to pass it on (⧗): keep that
             self.store.update_message(msg_id, state=state, method=_method_name(lxm.method))
 
     def _on_failed(self, msg_id, lxm, peer_hex, text, title):
@@ -472,9 +477,23 @@ class Core:
                                **audio)
         if peer in self.stumps:
             title = lxm.title_as_string() if lxm.title else ""
-            self.stump_state.setdefault(peer, stump.NodeState()).update(stump.parse_message(content, title))
+            items = stump.parse_message(content, title)
+            self.stump_state.setdefault(peer, stump.NodeState()).update(items)
+            if any(it["kind"] == "too_fast" for it in items):
+                self._mark_too_fast(peer)
         if peer in self.auth:
             self._feed_auth(peer, content)
+
+    def _mark_too_fast(self, peer):
+        """'⧗ — …': the Stump didn't pass on our latest line (too fast, since 1.0.0-beta.3;
+        voice notes too). Mark the newest one sent in the last 2 minutes, so it can be resent."""
+        now = time.time()
+        for m in reversed(self.store.messages(peer, limit=20)):
+            if m["outgoing"] and now - m["ts"] < 120:
+                if m["state"] != "failed":
+                    self.store.update_message(m["id"], state="failed",
+                                              reason="the Stump said slow down: not passed on, send it again")
+                return
 
     def _save_voice(self, field, name):
         """Keep a received voice note on disk; the message row points at it."""

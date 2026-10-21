@@ -1,3 +1,3 @@
 """FireFly: a gamepad-driven Reticulum / LXMF messenger for RK3326 handhelds."""
-__version__ = "0.7.1"
+__version__ = "0.7.2"
 APP_NAME = "FireFly"
