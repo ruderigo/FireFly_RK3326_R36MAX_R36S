@@ -40,8 +40,17 @@ class BeaconHandler:
 
     def received_announce(self, destination_hash, announced_identity, app_data):
         info = parse_beacon(app_data)
-        if info:
-            self.on_stump(*info)
+        if not info:
+            return
+        # Since Stump 1.0.0-beta.37 a beacon naming an LXMF address that isn't its own
+        # identity's is forged (anyone could make someone else look like a Stump): ignore it.
+        if announced_identity is not None and not beacon_matches(announced_identity, info[0]):
+            return
+        self.on_stump(*info)
+
+
+def beacon_matches(identity, lxmf_hex):
+    return RNS.Destination.hash(identity, "lxmf", "delivery").hex() == lxmf_hex
 
 
 def parse_beacon(app_data):
@@ -53,7 +62,13 @@ def parse_beacon(app_data):
         lxmf_hash = data[3]
         if not isinstance(lxmf_hash, (bytes, bytearray)) or len(lxmf_hash) != 16:
             return None
-        return lxmf_hash.hex(), str(data[2]), str(data[1])
+        version = str(data[1])
+        # Sixth item (1.0.0-beta.35+): what the Stump is, short keys, all optional and untrusted.
+        caps = data[5] if len(data) > 5 and isinstance(data[5], dict) else {}
+        rel = caps.get("r")
+        if isinstance(rel, str) and 0 < len(rel) <= 32:
+            version = rel
+        return lxmf_hash.hex(), str(data[2])[:32], version
     except Exception:
         return None
 
@@ -88,6 +103,10 @@ def safe_for_stump(text, title=""):
         text = "\u200b" + text            # invisible, but no longer the inter-Stump DM form
     return text, title
 
+
+# The billboard over LoRa (Stump 1.0.0-beta.38+): /board, /board <words|id>, /post <title> | <body>.
+_NOTICE = re.compile(r"^#(\d{6,}) (.+)$")
+_POSTED = re.compile(r"^✓ #(\d{6,})\s*$")
 
 TOKEN_SEP = " — "   # replies a client acts on: "<token> — <sentence for people>"
 
@@ -126,6 +145,12 @@ def parse_line(line):
         if m.group(2).startswith("♪ "):          # a voice DM: '♪ 5.0 s', the audio is in the field
             item["voice"] = m.group(2)[2:].strip()
         return item
+    m = _NOTICE.match(line)
+    if m:                                          # /board answer: '#482193 Marché samedi'
+        return {"kind": "notice", "id": m.group(1), "title": m.group(2)}
+    m = _POSTED.match(line)
+    if m:                                          # /post answer: '✓ #482193'
+        return {"kind": "posted", "id": m.group(1)}
     if line.startswith("✓ "):
         return {"kind": "join", "nick": line[2:].strip()}
     if line.startswith("✗ "):

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.0 (sandbox)
+Beta testing in SandBox_FireFly_RK3326, against Stump 1.0.0-beta.46
+(SandBox_Stump_On). The stable FireFly stays at 0.7.3.
+- **The billboard over LoRa** (Stump 1.0.0-beta.38+): in a Stump's Y menu,
+  *Billboard: newest notices* (`/board`), *search or open #id* (`/board
+  <words|id>`) and *post a notice* (`/post <title> | <body>`). Notices show
+  as `▪ #482193 title`, a post's confirmation as `✓ notice #482193 posted`.
+- **`⧗` shows the Stump's own sentence and no longer fails your line.**
+  Since beta.38 the same token also means "the radio is down, your line
+  waits up to an hour", so 0.7.2's automatic "send it again" could make
+  duplicates. The sentence (in the Stump's language) says which it is.
+- **Forged Stump beacons are ignored**: the LXMF address a beacon names
+  must belong to the beacon's own identity (as Stumps check since beta.37).
+- **The Stump's release** (the beacon's sixth item, beta.35+) is shown
+  instead of its "Beta A" label in its contact details.
 ## 0.7.3
 - The version number shows on the start-up screen ("FireFly 0.7.3"), on the
   error screen if start-up fails, and at the bottom of SETUP
