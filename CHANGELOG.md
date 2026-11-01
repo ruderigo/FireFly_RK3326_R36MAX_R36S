@@ -1,10 +1,10 @@
 # Changelog
 
 ## 0.8.1 (sandbox)
-- **Which build is running:** the start-up screen and SETUP → *Build* show
-  the channel and the commit the zip was built from (`sandbox 1a2b3c4
-  2026-11-01`; `dev` when run from a checkout). The release workflow stamps
-  it; the stable repo will say `stable`.
+- **Build number next to the version:** the SandBox_Stump_On build this
+  FireFly is tested against, now 46 (Stump 1.0.0-beta.46). The start-up
+  screen says `FireFly 0.8.1 build 46` and "tested against Stump
+  1.0.0-beta.46"; SETUP shows *FireFly version* 0.8.1 and *Build* 46.
 - **A Stump whose beacon never arrives is still recognised** (seen with a
   computer Stump on macOS, listed as a person). FireFly now also knows a
   Stump by what only a Stump sends: a room batch titled `#lora-mesh`,

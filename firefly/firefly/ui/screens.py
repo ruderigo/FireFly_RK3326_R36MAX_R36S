@@ -9,7 +9,7 @@ from . import theme as T
 from .widgets import Compose, Info, Menu, NumberEditor, QrScreen, Screen
 from .. import stump
 from ..rnsconfig import serial_ports
-from .. import __version__, BUILD
+from .. import __version__, BUILD, STUMP_RELEASE
 from ..settings import BANDWIDTHS, STUMP_RADIO
 
 STATE_MARK = {
@@ -790,7 +790,7 @@ class SettingsTab(ListScreen):
             ("rotation", "Screen rotation", _rot_label(s.get("screen_rotation", "auto"), self.app.display.rotation)),
             ("head", "", None),
             ("version", "FireFly version", __version__),
-            ("build", "Build", BUILD),
+            ("build", "Build (Stump tested against)", f"{BUILD} ({STUMP_RELEASE})"),
             ("apply", "Apply link changes (restarts FireFly)" + (" ●" if self.dirty_network else ""), ""),
             ("quit", "Quit FireFly", ""),
         ]
