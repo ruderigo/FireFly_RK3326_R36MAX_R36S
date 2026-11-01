@@ -35,6 +35,8 @@ jobs:
         run: |
           OUT="FireFly-RK3326-${{ steps.v.outputs.version }}.zip"
           find firefly -name __pycache__ -prune -exec rm -rf {} +
+          # Stamp the build: SETUP and the start-up screen show which commit this zip is.
+          printf 'COMMIT = "%s"\nDATE = "%s"\n' "${GITHUB_SHA::7}" "$(date -u +%Y-%m-%d)" > firefly/firefly/_build.py
           zip -qr -X "$OUT" firefly
           unzip -l "$OUT" | tail -n 1
 

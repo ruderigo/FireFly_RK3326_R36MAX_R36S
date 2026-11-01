@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.1 (sandbox)
+- **Which build is running:** the start-up screen and SETUP → *Build* show
+  the channel and the commit the zip was built from (`sandbox 1a2b3c4
+  2026-11-01`; `dev` when run from a checkout). The release workflow stamps
+  it; the stable repo will say `stable`.
+- **A Stump whose beacon never arrives is still recognised** (seen with a
+  computer Stump on macOS, listed as a person). FireFly now also knows a
+  Stump by what only a Stump sends: a room batch titled `#lora-mesh`,
+  `#wifi-mesh` or `#main`, the `→ #room` landing line, a reply token, an
+  `AUTH-CHALLENGE`, a `✓ #id` post. It is then named from its announce,
+  and the beacon is asked for again to fill in its release.
+- **Show QR code** for an address: in a contact's Y menu, and NETWORK → Y →
+  *Show my address as a QR code* (big, black on white, the address under
+  it). A phone camera reads it off the screen. The encoder (qrcode 8.2, BSD,
+  pure Python) is bundled, so no new package and offline updates still work.
+
 ## 0.8.0 (sandbox)
 Beta testing in SandBox_FireFly_RK3326, against Stump 1.0.0-beta.46
 (SandBox_Stump_On). The stable FireFly stays at 0.7.3.

@@ -244,6 +244,20 @@ class Core:
                 self.stump_pn[pn.hex()] = name
                 RNS.Transport.request_path(pn)
 
+    def _on_stump_signal(self, peer_hex):
+        """A peer whose messages only a Stump sends (a room batch title, '→ #room',
+        a reply token, an AUTH-CHALLENGE): treat it as a Stump even though its beacon
+        never reached us (a computer Stump behind a chain, say), and ask for the beacon
+        again so its name and release fill in."""
+        p = self.store.peer(peer_hex) or {}
+        name = p.get("name") or "Stump"
+        self.log(f"{peer_hex[:8]} talks like a Stump (no beacon heard yet): marking it as one")
+        self._on_stump_beacon(peer_hex, name, "beacon not heard")
+        self._beacon_asked.discard(peer_hex)
+        ident = RNS.Identity.recall(bytes.fromhex(peer_hex))
+        if ident is not None:
+            RNS.Transport.request_path(stump.beacon_hash_for(ident))
+
     def is_stump(self, peer_hex):
         return peer_hex in self.stumps
 
@@ -472,6 +486,9 @@ class Core:
                                rssi=getattr(lxm, "rssi", None), snr=getattr(lxm, "snr", None),
                                verified=verified, attachments=", ".join(attachments) or None, unread=True,
                                **audio)
+        title0 = lxm.title_as_string() if lxm.title else ""
+        if peer not in self.stumps and stump.looks_like_stump(content, title0):
+            self._on_stump_signal(peer)
         if peer in self.stumps:
             title = lxm.title_as_string() if lxm.title else ""
             items = stump.parse_message(content, title)

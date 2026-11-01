@@ -6,10 +6,10 @@ import pygame
 
 from . import draw as D
 from . import theme as T
-from .widgets import Compose, Info, Menu, NumberEditor, Screen
+from .widgets import Compose, Info, Menu, NumberEditor, QrScreen, Screen
 from .. import stump
 from ..rnsconfig import serial_ports
-from .. import __version__
+from .. import __version__, BUILD
 from ..settings import BANDWIDTHS, STUMP_RADIO
 
 STATE_MARK = {
@@ -479,6 +479,8 @@ class PeerActions:
             f"Last heard: {D.ago(p.get('last_heard'), time.time())} ago" if p.get("last_heard") else "Never heard",
             f"Stump node: {p.get('stump')} ({p.get('stump_ver')})" if p.get("stump") else "",
         ]))))
+        items.append(("Show QR code", lambda: self.app.push(QrScreen(
+            self.app, peer_label(p, peer), peer, "LXMF address"))))
         items.append(("Delete conversation and contact", lambda: self._delete()))
         items.append(("Block", lambda: self._block()))
         return items
@@ -596,6 +598,8 @@ class NetworkTab(Screen):
             self.app.toast("Syncing from propagation node" if core.sync() else "No propagation node known yet")
         elif action == "y":
             self.app.push(Menu(self.app, "Network", [
+                ("Show my address as a QR code", lambda: self.app.push(QrScreen(
+                    self.app, core.settings["display_name"], core.address, "my LXMF address: scan it to add me"))),
                 ("Search for RNodes now", lambda: (core.radio and core.radio.search_now(),
                                                    self.app.toast("Searching for RNodes…"))),
                 ("Nomad Network nodes heard", lambda: self.app.push(Info(self.app, "Nomad nodes", [
@@ -786,6 +790,7 @@ class SettingsTab(ListScreen):
             ("rotation", "Screen rotation", _rot_label(s.get("screen_rotation", "auto"), self.app.display.rotation)),
             ("head", "", None),
             ("version", "FireFly version", __version__),
+            ("build", "Build", BUILD),
             ("apply", "Apply link changes (restarts FireFly)" + (" ●" if self.dirty_network else ""), ""),
             ("quit", "Quit FireFly", ""),
         ]
