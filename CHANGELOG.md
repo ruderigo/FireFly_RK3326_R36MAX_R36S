@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.1 (sandbox)
+## 0.8.1
 - **Build number next to the version:** the SandBox_Stump_On build this
   FireFly is tested against, now 46 (Stump 1.0.0-beta.46). The start-up
   screen says `FireFly 0.8.1 build 46` and "tested against Stump
@@ -16,9 +16,9 @@
   it). A phone camera reads it off the screen. The encoder (qrcode 8.2, BSD,
   pure Python) is bundled, so no new package and offline updates still work.
 
-## 0.8.0 (sandbox)
-Beta testing in SandBox_FireFly_RK3326, against Stump 1.0.0-beta.46
-(SandBox_Stump_On). The stable FireFly stays at 0.7.3.
+## 0.8.0
+Tried first in SandBox_FireFly_RK3326, against Stump 1.0.0-beta.46
+(SandBox_Stump_On); released here together with 0.8.1.
 - **The billboard over LoRa** (Stump 1.0.0-beta.38+): in a Stump's Y menu,
   *Billboard: newest notices* (`/board`), *search or open #id* (`/board
   <words|id>`) and *post a notice* (`/post <title> | <body>`). Notices show

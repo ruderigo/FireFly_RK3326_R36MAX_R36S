@@ -14,7 +14,7 @@ re-implementation, so compatibility comes from the reference code itself.
 
 ![FireFly screens: chats, a conversation, a Stump node, the keyboard, network and setup](docs/screenshots.png)
 
-**Status:** v0.8.1 (sandbox: beta testing against [SandBox_Stump_On](https://github.com/ruderigo/SandBox_Stump_On); stable FireFly is [FireFly_RK3326_R36MAX_R36S](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S)). Runs on RK3326 handhelds with the dArkOS image of
+**Status:** v0.8.1, tested against Stump 1.0.0-beta.46 ([SandBox_Stump_On](https://github.com/ruderigo/SandBox_Stump_On)). Work in progress is tried first in [SandBox_FireFly_RK3326](https://github.com/ruderigo/SandBox_FireFly_RK3326). Runs on RK3326 handhelds with the dArkOS image of
 [arkos4clone](https://github.com/lcdyk0517/arkos4clone); tested on an R36MAX.
 See [Supported devices](#supported-devices).
 
@@ -24,7 +24,7 @@ Full step-by-step guide: **[INSTALL.md](INSTALL.md)**. In short:
 
 1. Flash RNode firmware onto a LoRa board (`rnodeconf --autoinstall`) and
    plug it into the handheld's USB.
-2. Download `FireFly-RK3326-X.Y.Z.zip` from the [latest release](https://github.com/ruderigo/SandBox_FireFly_RK3326/releases/latest) and copy it
+2. Download `FireFly-RK3326-X.Y.Z.zip` from the [latest release](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S/releases/latest) and copy it
    to the handheld with `scp` (or download it on the handheld with `wget`).
    LaBuche-Stump nodes also offer it on their own Wi-Fi, under About → Apps
    & Handhelds.

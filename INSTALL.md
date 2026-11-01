@@ -29,7 +29,7 @@ In the commands below, replace:
 - A **LoRa board with RNode firmware**, plugged into the handheld's USB
   (through a hub on the OTG port if needed). FireFly also works without
   one, over Wi-Fi/LAN or the internet.
-- `FireFly-RK3326-X.Y.Z.zip` from the [latest release](https://github.com/ruderigo/SandBox_FireFly_RK3326/releases/latest) (under **Assets**).
+- `FireFly-RK3326-X.Y.Z.zip` from the [latest release](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S/releases/latest) (under **Assets**).
   A LaBuche-Stump node also offers it on its own Wi-Fi (section 4, option C).
 
 ---
@@ -87,7 +87,7 @@ Keep this SSH session open for the next steps.
 
 ```bash
 cd /home/ark
-wget https://github.com/ruderigo/SandBox_FireFly_RK3326/releases/latest/download/FireFly-RK3326-X.Y.Z.zip
+wget https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S/releases/latest/download/FireFly-RK3326-X.Y.Z.zip
 ```
 
 **Option B: copy it from your computer.** Open a **second** terminal on your computer (on a Mac, `Cmd + T` opens a new
