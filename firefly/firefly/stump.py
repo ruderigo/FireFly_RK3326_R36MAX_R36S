@@ -130,6 +130,21 @@ def _token_reply(line):
     return None
 
 
+_STUMP_TITLES = ("#lora-mesh", "#wifi-mesh", "#lxmf", "#main")
+_STUMP_KINDS = ("moved", "already_in", "refused", "auth_challenge", "auth_ok", "auth_fail", "posted")
+
+
+def looks_like_stump(content, title=""):
+    """Only a Stump sends these: a room batch titled with one of its rooms, the
+    '→ #room' landing line, its reply tokens, the /auth challenge."""
+    if title and title.strip().lower() in _STUMP_TITLES:
+        return True
+    for l in (content or "").split("\n")[:12]:
+        if l.strip() and parse_line(l)["kind"] in _STUMP_KINDS:
+            return True
+    return False
+
+
 def parse_line(line):
     """Classify one line from a Stump node. Returns a dict with at least 'kind'."""
     line = line.rstrip("\r")

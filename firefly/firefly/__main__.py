@@ -12,7 +12,8 @@ import sys
 import threading
 import time
 
-from . import __version__
+from . import __version__, VERSION_LABEL, STUMP_RELEASE
+BUILD_LINE = f"tested against Stump {STUMP_RELEASE}"
 from .paths import default_paths
 
 
@@ -125,7 +126,7 @@ def main():
 
     import faulthandler
     faulthandler.enable()
-    _log(f"FireFly {__version__} starting, python {sys.version.split()[0]}")
+    _log(f"FireFly {VERSION_LABEL} starting, python {sys.version.split()[0]}")
     w, _, h = args.window.partition("x")
     size = (int(w), int(h))
     splash = None
@@ -136,7 +137,7 @@ def main():
             from .paths import default_paths as _dp
             rot = args.rotate or Settings(_dp(args.home, log=lambda *a: None).settings).get("screen_rotation", "auto")
             splash = Splash(args.fullscreen, size, rot)
-            splash.show([f"FireFly {__version__}", "Starting Reticulum and LXMF…", "(first start creates your identity)"])
+            splash.show([f"FireFly {VERSION_LABEL}", BUILD_LINE, "Starting Reticulum and LXMF…", "(first start creates your identity)"])
         from .core import Core
         core = Core(default_paths(args.home, log=_log), log=_log)
         _log("starting core")
@@ -153,7 +154,7 @@ def main():
         _log("FATAL\n" + tb)
         if splash:
             last = [l for l in tb.strip().splitlines() if l.strip()][-6:]
-            splash.show([f"FireFly {__version__} could not start", *last, "", "Details: ~/firefly/launch.log",
+            splash.show([f"FireFly {VERSION_LABEL} could not start", *last, "", "Details: ~/firefly/launch.log",
                          "Press any button to exit"], color=(0xe0, 0x7a, 0x5a))
             splash.wait_any_button(60)
     finally:
