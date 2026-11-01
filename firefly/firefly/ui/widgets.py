@@ -287,3 +287,45 @@ class Info(Screen):
         for ln in wrapped[self.top:self.top + visible]:
             D.text(surf, f.mono, ln, (r.x + 14, y))
             y += f.line
+
+
+class QrScreen(Screen):
+    """An address as a QR code, big and black on white so phones read it off the screen."""
+    hints = [("B", "back")]
+
+    def __init__(self, app, title, text, caption=""):
+        super().__init__(app)
+        self.title, self.text, self.caption = title, text, caption
+        try:
+            from ..qr import matrix
+            self.m = matrix(text)
+            self.error = None
+        except Exception as e:          # never take the app down for a picture
+            self.m, self.error = None, f"QR code unavailable: {e}"
+
+    def handle(self, action):
+        if action in ("b", "a"):
+            self.app.pop()
+
+    def draw(self, surf, f):
+        W, H = surf.get_size()
+        top = self.app.content_top            # the title is drawn above by the app
+        bottom = 2 * f.line + 8 + (f.line + 16)  # address + caption, then the hint bar
+        avail = min(W - 32, H - top - bottom - 8)
+        if self.m is None:
+            D.text(surf, f.mono_small, self.error, (16, top + f.line * 2), T.ERROR)
+        else:
+            n = len(self.m) + 8                     # 4 modules of white quiet zone each side
+            px = max(1, avail // n)
+            size = px * n
+            x0, y0 = (W - size) // 2, top
+            pygame.draw.rect(surf, (255, 255, 255), (x0, y0, size, size))
+            for r, row in enumerate(self.m):
+                for c, dark in enumerate(row):
+                    if dark:
+                        pygame.draw.rect(surf, (0, 0, 0), (x0 + (c + 4) * px, y0 + (r + 4) * px, px, px))
+            y = y0 + size + 8
+            D.text(surf, f.mono_small, D.spaced_hash(self.text) if len(self.text) == 32 else self.text,
+                   (W // 2, y), T.TEXT, center=True)
+            if self.caption:
+                D.text(surf, f.mono_small, self.caption, (W // 2, y + f.line), T.MUTED, center=True)

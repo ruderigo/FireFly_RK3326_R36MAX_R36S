@@ -6,10 +6,10 @@ import pygame
 
 from . import draw as D
 from . import theme as T
-from .widgets import Compose, Info, Menu, NumberEditor, Screen
+from .widgets import Compose, Info, Menu, NumberEditor, QrScreen, Screen
 from .. import stump
 from ..rnsconfig import serial_ports
-from .. import __version__
+from .. import __version__, BUILD, STUMP_RELEASE
 from ..settings import BANDWIDTHS, STUMP_RADIO
 
 STATE_MARK = {
@@ -404,7 +404,13 @@ def _stump_render(p, f, width):
     if k == "dm":
         return [(ln, T.DM_BODY) for ln in D.wrap(f.body, f"[DM] {p['author']}: {p['text']}", width)]
     if k == "too_fast":
-        return [(ln, T.ERROR) for ln in D.wrap(f.body, "⧗ slow down: your last line wasn't passed on, send it again", width)]
+        # One token, two meanings (lines too fast: not passed on; radio down: waits up to an
+        # hour). Only the Stump's own sentence tells which, so show it as it came.
+        return [(ln, T.ERROR) for ln in D.wrap(f.body, "⧗ " + (p.get("text") or "slow down"), width)]
+    if k == "notice":
+        return [(ln, T.TEXT) for ln in D.wrap(f.body, f"▪ #{p['id']}  {p['title']}", width)]
+    if k == "posted":
+        return [(ln, T.DIM) for ln in D.wrap(f.body, f"✓ notice #{p['id']} posted", width)]
     if k in ("join", "part", "rename", "topic", "moved", "names", "room", "no_such_nick"):
         return [(ln, T.DIM) for ln in D.wrap(f.body, _stump_text(p), width)]
     if k == "action":
@@ -460,12 +466,21 @@ class PeerActions:
                 initial="/join #", send_label="JOIN"))))
             items.append(("Stump: leave this room (/part)", lambda: core.send(peer, "/part", "opportunistic")))
             items.append(("Stump: who is here (/names)", lambda: core.send(peer, "/names", "opportunistic")))
+            items.append(("Billboard: newest notices (/board)", lambda: core.send(peer, "/board", "opportunistic")))
+            items.append(("Billboard: search or open #id…", lambda: self.app.push(Compose(
+                self.app, "Billboard on " + peer_label(p, peer), lambda t: core.send(peer, t),
+                initial="/board ", send_label="ASK"))))
+            items.append(("Billboard: post a notice…", lambda: self.app.push(Compose(
+                self.app, "Post: title | body (title max 80)", lambda t: core.send(peer, t),
+                initial="/post ", send_label="POST"))))
         items.append(("Show address", lambda: self.app.push(Info(self.app, peer_label(p, peer), [
             "LXMF address:", D.spaced_hash(peer), "",
             f"Hops: {core.hops(peer) if core.hops(peer) is not None else 'unknown'}",
             f"Last heard: {D.ago(p.get('last_heard'), time.time())} ago" if p.get("last_heard") else "Never heard",
             f"Stump node: {p.get('stump')} ({p.get('stump_ver')})" if p.get("stump") else "",
         ]))))
+        items.append(("Show QR code", lambda: self.app.push(QrScreen(
+            self.app, peer_label(p, peer), peer, "LXMF address"))))
         items.append(("Delete conversation and contact", lambda: self._delete()))
         items.append(("Block", lambda: self._block()))
         return items
@@ -583,6 +598,8 @@ class NetworkTab(Screen):
             self.app.toast("Syncing from propagation node" if core.sync() else "No propagation node known yet")
         elif action == "y":
             self.app.push(Menu(self.app, "Network", [
+                ("Show my address as a QR code", lambda: self.app.push(QrScreen(
+                    self.app, core.settings["display_name"], core.address, "my LXMF address: scan it to add me"))),
                 ("Search for RNodes now", lambda: (core.radio and core.radio.search_now(),
                                                    self.app.toast("Searching for RNodes…"))),
                 ("Nomad Network nodes heard", lambda: self.app.push(Info(self.app, "Nomad nodes", [
@@ -773,6 +790,7 @@ class SettingsTab(ListScreen):
             ("rotation", "Screen rotation", _rot_label(s.get("screen_rotation", "auto"), self.app.display.rotation)),
             ("head", "", None),
             ("version", "FireFly version", __version__),
+            ("build", "Build (Stump tested against)", f"{BUILD} ({STUMP_RELEASE})"),
             ("apply", "Apply link changes (restarts FireFly)" + (" ●" if self.dirty_network else ""), ""),
             ("quit", "Quit FireFly", ""),
         ]

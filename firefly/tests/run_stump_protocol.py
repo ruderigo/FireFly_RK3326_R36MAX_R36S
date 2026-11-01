@@ -43,22 +43,44 @@ check(stump.safe_for_stump("hi", "#WIFI-MESH")[1] == "", "...nor #wifi-mesh")
 t, _ = stump.safe_for_stump("[DM>rod] <me> x")
 check(not t.startswith("[DM>") and t.endswith("[DM>rod] <me> x"), "a line starting [DM> is defused")
 
-print("⧗ marks the line the Stump didn't pass on")
+print("Stump 1.0.0-beta.35 to beta.46")
+import RNS
+real = RNS.Identity()
+real_lxmf = RNS.Destination.hash(real, "lxmf", "delivery")
+caps = {"p": 2, "r": "1.0.0-beta.46", "m": "hybrid", "rad": True, "b": "x1"}
+info = stump.parse_beacon(msgpack.packb(["stump", "Beta A", "LaBuche", real_lxmf, [], caps]))
+check(info == (real_lxmf.hex(), "LaBuche", "1.0.0-beta.46"), "sixth item: the release is shown instead of the label")
+check(stump.parse_beacon(msgpack.packb(["stump", "Beta A", "X", real_lxmf, [], {"r": 5}]))[2] == "Beta A",
+      "a capabilities map with odd values is ignored")
+seen = []
+hd = stump.BeaconHandler(lambda *a: seen.append(a))
+hd.received_announce(b"", real, msgpack.packb(["stump", "Beta A", "LaBuche", real_lxmf]))
+check(len(seen) == 1, "a beacon naming its own identity's address is taken")
+hd.received_announce(b"", RNS.Identity(), msgpack.packb(["stump", "Beta A", "Fake", real_lxmf]))
+check(len(seen) == 1, "a forged beacon (someone else's address) is ignored")
+check(P("#482193 Marché samedi") == {"kind": "notice", "id": "482193", "title": "Marché samedi"}, "/board line")
+check(P("#482193 Vente: vélo")["kind"] == "notice", "a notice title with ': ' isn't taken for a /names line")
+check(P("✓ #482193") == {"kind": "posted", "id": "482193"}, "/post answer")
+check(P("✓ rod")["kind"] == "join", "'✓ nick' is still a join")
+r = P("⧗ — the radio has been down for 3 min: your message will go out when it's back (kept up to an hour)")
+check(r["kind"] == "too_fast" and "kept up to an hour" in r["text"], "⧗ radio-down keeps its sentence for the screen")
+
+print("⧗ no longer fails a line (it may only be waiting for the radio)")
 tmp = tempfile.mkdtemp(); paths = Paths(tmp); paths.ensure()
 s = Settings(paths.settings); s.save()
 core = Core(paths, log=lambda *a: None)
-node = "ab" * 16
-core.stumps[node] = ("LaBuche", "Beta A")
-old = core.store.add_message(node, True, "an hour ago", "delivered", ts=time.time() - 3600)
-mid = core.store.add_message(node, True, "too fast", "delivered", ts=time.time() - 5)
-core._mark_too_fast(node)
-row = core.store.message(mid)
-check(row["state"] == "failed" and "send it again" in row["reason"], f"newest line marked: {row['reason']!r}")
-check(core.store.message(old)["state"] == "delivered", "older lines untouched")
+check(not hasattr(core, "_mark_too_fast"), "no automatic 'send it again'")
 
-class L:   # the delivery proof arriving after the ⧗
-    method = 0
-core._on_delivered(mid, L())
-check(core.store.message(mid)["state"] == "failed", "a late delivery proof doesn't hide the ⧗")
+print("a Stump whose beacon never arrives (computer Stumps behind a chain)")
+check(stump.looks_like_stump("<alice> hi", "#lora-mesh"), "a #lora-mesh batch is a Stump's")
+check(stump.looks_like_stump("→ #lora-mesh"), "'→ #room' is a Stump's")
+check(stump.looks_like_stump("AUTH-CHALLENGE 00112233445566778899aabbccddeeff"), "an AUTH-CHALLENGE is a Stump's")
+check(not stump.looks_like_stump("see you at #main tonight"), "a person mentioning a room isn't")
+check(not stump.looks_like_stump("ok — fine", "Hello"), "a person's em dash isn't")
+mac = "cd" * 16
+core.store.upsert_peer(mac, "lxmf", name="macOS")
+check(not core.is_stump(mac), "before: a peer")
+core._on_stump_signal(mac)
+check(core.is_stump(mac) and core.store.peer(mac)["stump"] == "macOS", "after its first Stump line: a Stump, named from its announce")
 print("ALL PASSED" if ok else "SOME FAILED")
 sys.stdout.flush(); os._exit(0 if ok else 1)

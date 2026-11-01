@@ -14,7 +14,7 @@ re-implementation, so compatibility comes from the reference code itself.
 
 ![FireFly screens: chats, a conversation, a Stump node, the keyboard, network and setup](docs/screenshots.png)
 
-**Status:** v0.7.3. Runs on RK3326 handhelds with the dArkOS image of
+**Status:** v0.8.1, tested against Stump 1.0.0-beta.46 ([SandBox_Stump_On](https://github.com/ruderigo/SandBox_Stump_On)). Work in progress is tried first in [SandBox_FireFly_RK3326](https://github.com/ruderigo/SandBox_FireFly_RK3326). Runs on RK3326 handhelds with the dArkOS image of
 [arkos4clone](https://github.com/lcdyk0517/arkos4clone); tested on an R36MAX.
 See [Supported devices](#supported-devices).
 
@@ -286,6 +286,8 @@ From the `firefly/` folder:
 
 FireFly builds on [Reticulum](https://github.com/markqvist/Reticulum) and
 [LXMF](https://github.com/markqvist/LXMF) by Mark Qvist (Reticulum License)
-and [pygame](https://www.pygame.org) (LGPL). Colour palette after the
+and [pygame](https://www.pygame.org) (LGPL). QR codes are drawn with a bundled
+copy of [python-qrcode](https://github.com/lincolnloop/python-qrcode) 8.2 (BSD,
+licence in `firefly/firefly/vendor/qrcode/LICENSE`). Colour palette after the
 [LaBuche-Stump](https://github.com/ruderigo/LaBuche-Stump) project's Amber
 theme.

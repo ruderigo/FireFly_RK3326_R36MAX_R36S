@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.8.1
+- **Build number next to the version:** the SandBox_Stump_On build this
+  FireFly is tested against, now 46 (Stump 1.0.0-beta.46). The start-up
+  screen says `FireFly 0.8.1 build 46` and "tested against Stump
+  1.0.0-beta.46"; SETUP shows *FireFly version* 0.8.1 and *Build* 46.
+- **A Stump whose beacon never arrives is still recognised** (seen with a
+  computer Stump on macOS, listed as a person). FireFly now also knows a
+  Stump by what only a Stump sends: a room batch titled `#lora-mesh`,
+  `#wifi-mesh` or `#main`, the `→ #room` landing line, a reply token, an
+  `AUTH-CHALLENGE`, a `✓ #id` post. It is then named from its announce,
+  and the beacon is asked for again to fill in its release.
+- **Show QR code** for an address: in a contact's Y menu, and NETWORK → Y →
+  *Show my address as a QR code* (big, black on white, the address under
+  it). A phone camera reads it off the screen. The encoder (qrcode 8.2, BSD,
+  pure Python) is bundled, so no new package and offline updates still work.
+
+## 0.8.0
+Tried first in SandBox_FireFly_RK3326, against Stump 1.0.0-beta.46
+(SandBox_Stump_On); released here together with 0.8.1.
+- **The billboard over LoRa** (Stump 1.0.0-beta.38+): in a Stump's Y menu,
+  *Billboard: newest notices* (`/board`), *search or open #id* (`/board
+  <words|id>`) and *post a notice* (`/post <title> | <body>`). Notices show
+  as `▪ #482193 title`, a post's confirmation as `✓ notice #482193 posted`.
+- **`⧗` shows the Stump's own sentence and no longer fails your line.**
+  Since beta.38 the same token also means "the radio is down, your line
+  waits up to an hour", so 0.7.2's automatic "send it again" could make
+  duplicates. The sentence (in the Stump's language) says which it is.
+- **Forged Stump beacons are ignored**: the LXMF address a beacon names
+  must belong to the beacon's own identity (as Stumps check since beta.37).
+- **The Stump's release** (the beacon's sixth item, beta.35+) is shown
+  instead of its "Beta A" label in its contact details.
 ## 0.7.3
 - The version number shows on the start-up screen ("FireFly 0.7.3"), on the
   error screen if start-up fails, and at the bottom of SETUP
