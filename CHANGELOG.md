@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.9.8 (sandbox)
+Build 86 (Stump 1.0.0-beta.86). Reticulum 1.6.1 and LXMF 1.3.1 (out 18 Nov),
+instead of 1.5.6 and 1.2.0: `install.sh` downloads them on the next update
+(or put the two new wheels in `wheels/`, INSTALL.md section 8). Both still
+run on Python 3.9; CI tests 3.9 and 3.11 as before. Re-tested against real
+Stumps of build 86: `tests/run_real_stump.py` (LoRa and Wi-Fi, 22 checks,
+all pass; 25 with the Stump's new announce stamps switched on, all pass)
+and `tests/run_real_stump_nolora.py` (all pass).
+- **Announce stamps.** Reticulum 1.6.1 puts a proof-of-work stamp on every
+  announce, and sends no announce and answers no path request before the
+  stamp is made. It is made once per address and kept
+  (`reticulum/storage/stamps`). FireFly asks Reticulum for a stamp worth
+  23.5, not its default 25: 23.5 is what a node enforcing stamps asks by
+  default, and the least a 1.6.1 node needs to take the stamp off before
+  handing the name to its apps. It is about 2.8 times less work than 25:
+  a few seconds on a computer, roughly half a minute (a couple of minutes
+  when unlucky) estimated for an RK3326's first start after this update.
+  Every start after that uses the kept stamp. The status screen says when
+  it is still being made. `"announce_stamp_value"` in settings.json changes
+  it. With `"managed_config": false`, your own Reticulum config decides.
+- **FireFly's app tag survives LXMF 1.3.1.** LXMF 1.3.1 announces four items
+  (its fourth is a fractional stamp cost, empty when none is asked). FireFly
+  only added its app tag to three, so with 1.3.1 the tag and `{"z": 1}`
+  would have gone missing. Now the tag takes the fourth place, as the
+  Stumps put nothing there either: Stumps still see FireFly as a Stump app
+  and send it packed text; other apps still read the name.
+- **Names read right from stamped announces.** From 1.6.1 nodes and from
+  Stumps with announce stamps on, Reticulum hands FireFly the app data
+  without the stamp. A node whose stamp is cheaper than 23.5 arrives with
+  the stamp still on: a NomadNet node's or an old app's plain-text name now
+  reads without the 18 bytes after it (as the Stump does since beta.85).
+- **Sending to a new 1.6.1 app waits longer for its path.** Such an app
+  answers only once its own stamp is made (16 s on a fast computer the
+  first time, minutes on a phone). FireFly gave up after 20 s; now it waits
+  up to 3 minutes, asking again after 15 s and then every 30 s (as the
+  Stump does since beta.85), and the message says it is waiting.
+- Faster message stamps (`stamps.py`) moved with LXMF's stamp workers into
+  Reticulum (`RNS.Stamps`): same stamps, used for large workblocks only;
+  Reticulum's own multi-core workers do the small announce stamps.
+- Tests: `run_announce_stamps.py` (new: FireFly's stamped announce read back
+  by Reticulum's own validation, also under stamp enforcement; name, tag and
+  `z`; 1.6.1 and cheaply stamped peers). The test peers use a cheap stamp so
+  no test waits on one (as Team Stump's reference apps). `run_integration.py`
+  checks the path is asked again. `run_real_stump.py` checks a Stump with
+  announce stamps on: its stamped announce arrives and its name reads right.
+
 ## 0.9.7 (sandbox)
 Build 82 (Stump 1.0.0-beta.82). Re-tested against real Stumps of that build:
 `tests/run_real_stump.py` (LoRa and Wi-Fi, 22 checks, all pass) and

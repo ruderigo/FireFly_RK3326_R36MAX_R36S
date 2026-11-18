@@ -51,7 +51,9 @@ while "PEER ready" not in line: line = peer.stdout.readline()
 bob = line.split()[2]
 paths = Paths(os.path.join(tmp, "me")); paths.ensure()
 s = Settings(paths.settings); s["radio"]["enabled"] = False; s["auto_interface"] = False; s["share_instance"] = False
-s["tcp_peers"] = ["127.0.0.1:47801"]; s["log_level"] = 2; s.save()
+s["tcp_peers"] = ["127.0.0.1:47801"]; s["log_level"] = 2
+s["announce_stamp_value"] = 8   # Reticulum 1.6.1: a cheap announce stamp, so no test waits on one
+s.save()
 core = Core(paths, log=lambda *a: None); core.start()
 wait(lambda: (core.store.peer(bob) or {}).get("name"), 20)
 core.send(bob, "voice?")

@@ -121,6 +121,23 @@ try:
           "a line FireFly sends packed (/join #packed-test) is read by the Stump: '→ #packed-test'")
     core.send(node_hex, "/join #lora-mesh")
     wait(lambda: core.stump_state[node_hex].room == "lora-mesh", 60)
+    # Stump 1.0.0-beta.86: announce stamps, when its admin ticks them (ANNOUNCE_STAMP in its
+    # config.py). It makes them in the background (about a minute each on a computer) and
+    # announces again; FireFly must still read its name and z with the stamp on.
+    import re as _re0, RNS as _RNS
+    _cfg = open(os.path.join(STUMP_DIR, "config.py"), encoding="utf-8").read()
+    if _re0.search(r"^ANNOUNCE_STAMP\s*=\s*True", _cfg, _re0.M):
+        print("announce stamps (Stump 1.0.0-beta.86, switched on in its config.py)", flush=True)
+        want = _re0.search(r"^NODE_NAME\s*=\s*['\"](.*)['\"]", _cfg, _re0.M).group(1)
+        h = bytes.fromhex(node_hex)
+        got = wait(lambda: (_RNS.Identity.recall_stamp_value(h) or 0) >= 23.5, 400)
+        check(got, f"the Stump's LXMF announce arrives stamped: value {_RNS.Identity.recall_stamp_value(h)}")
+        if got:
+            ad = _RNS.Identity.recall_app_data(h)
+            check(ad is not None and ad[-18:-16] != b"\xc1\x00" and _mp.unpackb(ad)[0] == want.encode(),
+                  f"... Reticulum handed FireFly its app data without the stamp: {_mp.unpackb(ad)[:1] if ad else None}")
+            check(wait(lambda: (core.store.peer(node_hex) or {}).get("name") == want, 30) and core.packs_for(node_hex),
+                  f"FireFly lists it by its name ({(core.store.peer(node_hex) or {}).get('name')!r}), packed text on")
     from firefly import lan
     found = lan.find_stumps(["127.0.0.1", "255.255.255.255"], wait=2.0)
     check(node_hex in found, f"the same Stump answers STUMP? on the LAN: {found.get(node_hex, {}).get('name')} "

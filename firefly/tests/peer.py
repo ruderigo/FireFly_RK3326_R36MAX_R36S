@@ -13,12 +13,17 @@ as_pn = "--pn" in sys.argv
 quiet_pn = "--quiet-pn" in sys.argv     # propagation node on, but never announced (like a Stump's)
 quit_after = int(sys.argv[sys.argv.index("--quit-after")+1]) if "--quit-after" in sys.argv else 600
 os.makedirs(work, exist_ok=True)
+# Reticulum 1.6.1 stamps announces (2^25 hashes by default: 16 s or more on CI before the
+# first one goes out). A cheap stamp here, as Team Stump's reference apps use, so no test
+# hangs on making one. FireFly's own announces still read right from it (run_announce_stamps.py).
 with open(os.path.join(work, "config"), "w") as f:
     f.write(f"""[reticulum]
   enable_transport = Yes
   share_instance = No
 [logging]
   loglevel = 2
+[stamps]
+  destination_value = 8
 [interfaces]
   [[TCP Server]]
     type = TCPServerInterface

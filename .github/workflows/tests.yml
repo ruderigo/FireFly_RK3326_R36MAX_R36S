@@ -35,7 +35,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq opus-tools codec2
-          pip install "rns==1.5.6" "lxmf==1.2.0" "pygame>=2" pyserial cryptography
+          pip install "rns==1.6.1" "lxmf==1.3.1" "pygame>=2" pyserial cryptography
 
       - name: UI smoke test (6000 random button presses)
         run: python tests/ui_smoke.py
@@ -74,6 +74,10 @@ jobs:
       - name: Packed text (Stump 1.0.0-beta.82)
         timeout-minutes: 2
         run: python tests/run_packed_text.py
+
+      - name: Reticulum 1.6.1 announce stamps (FireFly's own, and other nodes')
+        timeout-minutes: 4
+        run: python tests/run_announce_stamps.py
 
       - name: radio.json from the Stump provisioner, and the network passphrase
         timeout-minutes: 3

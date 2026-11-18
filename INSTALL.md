@@ -10,7 +10,7 @@ In the commands below, replace:
 - `<handheld-ip>` with your handheld's IP address (shown in its Wi-Fi or
   network info screen),
 - `FireFly-RK3326-X.Y.Z.zip` with the zip's file name (currently
-  `FireFly-RK3326-0.9.7.zip`; releases up to 0.6.2 were named `firefly_vX.Y.Z.zip`).
+  `FireFly-RK3326-0.9.8.zip`; releases up to 0.6.2 were named `firefly_vX.Y.Z.zip`).
 
 ---
 
@@ -261,9 +261,9 @@ two things are needed beforehand:
   `python3-serial` or `python3-venv` the installer stops and says which are
   missing; without `codec2` or `opus-tools` it carries on, and voice notes
   in those formats show but don't play until you run it again online;
-- Reticulum and LXMF: download `rns-1.5.6-py3-none-any.whl` and
-  `lxmf-1.2.0-py3-none-any.whl` from PyPI on a computer
-  (`pip download --no-deps rns==1.5.6 lxmf==1.2.0`) and put them in a
+- Reticulum and LXMF: download `rns-1.6.1-py3-none-any.whl` and
+  `lxmf-1.3.1-py3-none-any.whl` from PyPI on a computer
+  (`pip download --no-deps rns==1.6.1 lxmf==1.3.1`) and put them in a
   `wheels` folder next to `deploy` (`~/firefly-new/firefly/wheels/`). The
   installer uses them instead of the internet.
 
