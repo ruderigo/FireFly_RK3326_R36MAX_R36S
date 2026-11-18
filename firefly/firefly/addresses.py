@@ -38,14 +38,15 @@ def key_bytes(k):
 
 def parse(text):
     """-> None (not an address), or {"address", "scheme", "stump" (name or None), "key" (64 bytes
-    or None), "key_bad" (a key was there but isn't one)}."""
+    or None), "key_bad" (a key was there but isn't one), "release" (a Stump's `r=`, Stump
+    1.0.0-beta.79: a hint only, the signed beacon has the last word; or None)}."""
     raw = "".join(str(text or "").split())
     m = _ADDRESS_TEXT.match(raw.lower())
     if not m:
         return None
     addr = m.group(1)
     out = {"address": addr, "scheme": raw.split("://", 1)[0].lower() if "://" in raw else None,
-           "stump": None, "key": None, "key_bad": False}
+           "stump": None, "key": None, "key_bad": False, "release": None}
     rest = raw.split("://", 1)[1] if "://" in raw else raw
     i = rest.lower().find(addr)
     after = rest[i + 32:] if i >= 0 else ""
@@ -65,6 +66,10 @@ def parse(text):
         if "stump" in params:
             name = unquote(params["stump"][0]).strip()
             out["stump"] = "".join(ch for ch in name if ch.isprintable())[:40]
+        if "r" in params:
+            rel = unquote(params["r"][0]).strip()
+            if 0 < len(rel) <= 32 and rel.isprintable():
+                out["release"] = rel
         if "key" in params:
             key = key_bytes(params["key"][0])
             if key is not None:

@@ -27,6 +27,9 @@ check(a["key"] == KEY and a["scheme"] == "lxma", "lxma://address:key (Columba, M
 check(addresses.parse(f"lxma://{THEM}:{addresses.b64url(KEY)}")["key"] == KEY, "...key in base64url")
 a = addresses.parse(f"lxmf://{THEM}?stump=B%C3%BBche%203&key={addresses.b64url(KEY)}")
 check(a["stump"] == "Bûche 3" and a["key"] == KEY, "lxmf://…?stump=…&key=… (a Stump's code, beta.52)")
+a = addresses.parse(f"lxmf://{THEM}?stump=B%C3%BBche&key={addresses.b64url(KEY)}&r=1.0.0-beta.82")
+check(a["release"] == "1.0.0-beta.82" and a["key"] == KEY, "…&r=<release> (beta.79): read as a hint")
+check(addresses.parse(f"lxmf://{THEM}?key={addresses.b64url(KEY)}")["release"] is None, "no r=: no release")
 check(addresses.parse(f"lxma://{THEM}:abcd")["key_bad"], "a key that isn't one is flagged")
 check(addresses.identity_for(THEM, RNS.Identity().get_public_key()) is None, "a key that isn't this address's: refused")
 check(addresses.identity_for(THEM, KEY) is not None, "...the right one: accepted")
@@ -76,7 +79,7 @@ import RNS.vendor.umsgpack as _mp
 from firefly.core import APP_TAG
 data = core.router.get_announce_app_data(core.local.hash)
 items = _mp.unpackb(data)
-check(len(items) == 4 and items[3] == APP_TAG and APP_TAG.startswith("stump:firefly-rk3326/"), f"fourth item: {items[3]!r}")
+check(len(items) >= 4 and items[3] == APP_TAG and APP_TAG.startswith("stump:firefly-rk3326/"), f"fourth item: {items[3]!r}")
 check(LXMF.display_name_from_app_data(data) == core.settings["display_name"], "upstream LXMF still reads the name")
 def stump_app_tag_in(app_data):          # the Stump's own check (rrc.app_tag_in, beta.53 packs branch)
     b0 = app_data[0]

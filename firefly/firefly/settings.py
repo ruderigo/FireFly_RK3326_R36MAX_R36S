@@ -36,6 +36,7 @@ DEFAULTS = {
         "All good here", "Need help", "Copy that", "Thanks!",
     ],
     "stump_wifi": True,              # chat with Stumps over the local network when they're on it
+    "packed_text": True,             # packed text with Stumps and apps that announce it (Stump beta.82)
     "stump_prefer": "wifi",          # the route a Stump uses for your DMs while you're on its network
     "voice_to_sd": True,             # copy every voice note to the SD card as a WAV
     "voice_export_dir": "auto",      # auto = /roms(2)/firefly-voice, visible on a computer

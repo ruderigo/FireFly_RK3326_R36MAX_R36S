@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.9.7 (sandbox)
+Build 82 (Stump 1.0.0-beta.82). Re-tested against real Stumps of that build:
+`tests/run_real_stump.py` (LoRa and Wi-Fi, 22 checks, all pass) and
+`tests/run_real_stump_nolora.py` (all pass).
+- **Packed text: more of a chat line in each LoRa packet** (Stump beta.82).
+  FireFly's LXMF announce now says it reads packed text (a fifth item,
+  `{"z": 1}`, after its app tag; Sideband, MeshChat and upstream LXMF still
+  read only the first three). A Stump then sends it packed replies: `/help`
+  (867 bytes) arrives in one packet of 170 bytes instead of over a link.
+  FireFly reads every packed message (`ztext.py`, the Stump's own file),
+  and packs its own lines only to a Stump or app whose latest announce
+  says `z`, only when that is shorter. Everyone else gets plain text, as
+  before. `"packed_text": false` in settings.json turns it off.
+  Checked against a real Stump: its `/help` came packed and read right,
+  and a line FireFly sent packed (`/join`) was read by the Stump.
+- A message that isn't text (or packed and broken) shows as a short note
+  instead of being dropped.
+- **No /auth over LoRa** (Stump beta.71): nothing to change. FireFly never
+  sends `/auth` by itself over LoRa; the menu's *verify my identity* still
+  works, for older Stumps.
+- A Stump's QR code may end with `&r=<release>` (Stump beta.79): FireFly
+  shows that release for a Stump added from its code until its beacon
+  arrives (a hint only; the beacon has the last word).
+- Tests: `run_packed_text.py` (Team Stump's fixed messages, unpacking, the
+  announce flag, who gets packed text); `run_interop.py` (`r=`).
+
 ## 0.9.6 (sandbox)
 Build 62.
 - **Installed from the RK3326 Provisioner, sudo's password typed on its

@@ -17,7 +17,7 @@ import LXMF
 from LXMF.LXMessage import LXMessage
 from LXMF.LXMRouter import LXMRouter
 
-from . import stump
+from . import stump, ztext
 from .rnsconfig import write_config
 from .settings import Settings
 from .store import Store
@@ -52,6 +52,33 @@ def commands_asked(field):
     return sorted(set(out))
 
 
+PACKS_MAX = 512           # peers remembered as reading packed text (from their announces)
+
+
+def reads_packed(app_data):
+    """True when an LXMF announce says its sender reads packed text (Stump 1.0.0-beta.82,
+    CLIENT_QUICKSTART "Packed text"): a fifth item, [name, cost, functions, tag, {"z": 1}]."""
+    try:
+        if app_data and ((0x90 <= app_data[0] <= 0x9f) or app_data[0] == 0xdc):
+            d = msgpack.unpackb(app_data)
+            if isinstance(d, list) and len(d) > 4 and isinstance(d[4], dict):
+                z = d[4].get("z")
+                return isinstance(z, int) and not isinstance(z, bool) and z >= 1
+    except Exception:
+        pass
+    return False
+
+
+def unpacked_content(content):
+    """An incoming LXMF content as its text: 0xFF unpacked (ztext.py), 0xFE stripped,
+    anything else as it came. A packed one that can't be read stays as it came (binary)."""
+    if content and content[0] >= ztext.PLAIN:
+        text = ztext.unpack(content)
+        if text is not None:
+            return text
+    return content
+
+
 def single_packet_size(text, title=""):
     """LXMF content size the way LXMessage.pack() measures it (limit 295 for one packet)."""
     payload = msgpack.packb([time.time(), title.encode(), text.encode(), {}])
@@ -78,6 +105,7 @@ class Core:
         self._sync_retry_at = 0.0
         self._sync_failures = 0
         self.stumps = {}            # lxmf hash hex -> (name, version)
+        self.packs = {}             # lxmf hash hex -> its latest announce says it reads packed text
         self.running = False
         self.radio = None
         self.lan = None
@@ -240,6 +268,7 @@ class Core:
         """Say "I'm a Stump app" in every LXMF announce (Stump 1.0.0-beta.53, CLIENT_QUICKSTART
         "Saying you're a Stump app"): a fourth app-data item, "stump:firefly-rk3326/<version>".
         Stumps then never reword their lines for FireFly, from the first message, over LoRa too.
+        Then (Stump 1.0.0-beta.82, "Packed text") a fifth, {"z": 1}: FireFly reads packed text.
         Upstream LXMF (Sideband, NomadNet, MeshChat, Columba) reads only the first three."""
         orig = self.router.get_announce_app_data
 
@@ -248,7 +277,7 @@ class Core:
             try:
                 items = msgpack.unpackb(data) if data else None
                 if isinstance(items, list) and len(items) == 3:
-                    return msgpack.packb(items + [APP_TAG])
+                    return msgpack.packb(items + [APP_TAG] + ([{"z": 1}] if self.packed_text_on() else []))
             except Exception:
                 pass
             return data
@@ -270,6 +299,7 @@ class Core:
     def _on_delivery_announce(self, dest_hash, identity, app_data):
         if dest_hash == self.local.hash or dest_hash.hex() in self._blocked:
             return
+        self._note_packs(dest_hash.hex(), app_data)
         name = LXMF.display_name_from_app_data(app_data) if app_data else None
         hops = RNS.Transport.hops_to(dest_hash)
         self.store.upsert_peer(dest_hash.hex(), "lxmf", name=name, hops=hops,
@@ -278,6 +308,39 @@ class Core:
         h = dest_hash.hex()
         if identity and h not in self.stumps and not self._asked_beacon(h):
             RNS.Transport.request_path(stump.beacon_hash_for(identity))
+
+    # ---------------------------------------------------------------- packed text (ztext.py)
+    def packed_text_on(self):
+        """Packed text is said in the announce, and sent: settings "packed_text" (on by default)."""
+        return bool(self.settings.get("packed_text", True)) and ztext.available()
+
+    def _note_packs(self, peer_hex, app_data):
+        """What the latest announce of this address says: packed text or not."""
+        with self.lock:
+            self.packs.pop(peer_hex, None)
+            if len(self.packs) >= PACKS_MAX:
+                self.packs.pop(next(iter(self.packs)))
+            self.packs[peer_hex] = reads_packed(app_data)
+
+    def packs_for(self, peer_hex):
+        """True when text to this address goes packed: its latest announce said {"z": 1}.
+        Not heard this session: the announce Reticulum keeps (known destinations)."""
+        if not self.packed_text_on():
+            return False
+        v = self.packs.get(peer_hex)
+        if v is None:
+            try:
+                v = reads_packed(RNS.Identity.recall_app_data(bytes.fromhex(peer_hex)))
+            except Exception:
+                v = False
+        return v
+
+    def outgoing_content(self, peer_hex, text):
+        """A message's content as it goes to this address: packed (bytes) when it reads packed
+        text and that is shorter (ztext.pack: never longer, short lines as they are), else the text."""
+        if not self.packs_for(peer_hex):
+            return text
+        return ztext.pack(text.encode("utf-8"))
 
     _beacon_asked = set()
 
@@ -484,7 +547,7 @@ class Core:
             # LoRa-friendly default: one packet, no link setup. LXMF falls back
             # to a link by itself when the message is too big for one packet.
             desired = LXMessage.OPPORTUNISTIC
-        lxm = LXMessage(dest, self.local, text, title=title, desired_method=desired)
+        lxm = LXMessage(dest, self.local, self.outgoing_content(peer_hex, text), title=title, desired_method=desired)
         lxm.register_delivery_callback(lambda m, i=msg_id: self._on_delivered(i, m))
         lxm.register_failed_callback(lambda m, i=msg_id: self._on_failed(i, m, peer_hex, text, title))
         with self.lock:
@@ -552,7 +615,11 @@ class Core:
         lxm_hash = lxm.hash.hex() if lxm.hash else None
         if lxm_hash and self.store.has_message(lxm_hash):
             return  # duplicate (e.g. delivered directly and again via propagation node)
+        if lxm.content:
+            lxm.content = unpacked_content(lxm.content)     # packed text (Stump 1.0.0-beta.82)
         content = lxm.content_as_string() if lxm.content else ""
+        if content is None:     # not UTF-8 (binary, or packed and unreadable): a note, not a crash
+            content = f"⊘ {len(lxm.content)} bytes FireFly can't read as text"
         attachments = []
         for fid, label in FIELD_NAMES.items():
             if lxm.fields and fid in lxm.fields:
@@ -736,7 +803,9 @@ class Core:
                 RNS.Identity.remember(None, bytes.fromhex(h), ident.get_public_key(), None)
             how = "key"
         if a["stump"] is not None:
-            self._on_stump_beacon(h, a["stump"] or "Stump", "from its QR code")
+            # Its release from the link (r=, Stump 1.0.0-beta.79) is shown as a hint until its beacon says.
+            label = f"{a['release']} (from its QR code)" if a.get("release") else "from its QR code"
+            self._on_stump_beacon(h, a["stump"] or "Stump", label)
             how = "stump"
         self.request_path(h)
         return h, how
