@@ -58,7 +58,14 @@ print("Stump started, log:", log.name, flush=True)
 tmp = tempfile.mkdtemp(); paths = Paths(tmp); paths.ensure()
 s = Settings(paths.settings); s["auto_interface"] = False; s["share_instance"] = False
 s["display_name"] = "R36 Tester"; s["log_level"] = 2; s.save()
-core = Core(paths, log=lambda *a: None); core.start()
+core = Core(paths, log=lambda *a: None)
+# What LXMF hands FireFly and what FireFly hands LXMF, as on the air (packed text, beta.82).
+wire_in, wire_out = [], []
+_on_message = core._on_message
+core._on_message = lambda lxm: (wire_in.append((time.time(), bytes(lxm.content or b""))), _on_message(lxm))
+core.start()
+_handle_outbound = core.router.handle_outbound
+core.router.handle_outbound = lambda lxm: (wire_out.append(bytes(lxm.content or b"")), _handle_outbound(lxm))
 core.radio.port_lister = lambda: [ff_radio.port]
 core.radio.search_now()
 try:
@@ -88,6 +95,32 @@ try:
     core.send(node_hex, "/board")
     check(wait(lambda: any(it["kind"] == "notice" and "FireFly test" in it["title"] for it in lines()), 90),
           "/board lists the notice just posted")
+    print("packed text (Stump 1.0.0-beta.82)", flush=True)
+    from firefly import ztext
+    import RNS.vendor.umsgpack as _mp
+    mine = _mp.unpackb(core.router.get_announce_app_data(core.local.hash))
+    check(len(mine) == 5 and mine[4] == {"z": 1}, f"FireFly announces it reads packed text: {mine[3:]}")
+    check(wait(lambda: core.packs_for(node_hex), 60), "the Stump's own announce says z: FireFly will pack for it")
+    core.announce()
+    time.sleep(3)
+    t0 = time.time()
+    core.send(node_hex, "/help")
+    def help_in():
+        return [c for t, c in wire_in if t >= t0 and c[:1] == b"\xff" and len(ztext.unpack(c) or b"") > 295]
+    check(wait(lambda: help_in(), 120), "the Stump's /help reply arrives packed (first byte 0xFF on the wire)")
+    if help_in():
+        c = help_in()[0]
+        text = ztext.unpack(c).decode()
+        print(f"     /help: {len(c)} bytes on the wire for {len(text.encode())} bytes of text", flush=True)
+        check(len(c) <= 295 and any(text.split("\n")[0][:40] in m["content"] for m in core.store.messages(node_hex)
+                                    if not m["outgoing"]), "... one packet, and FireFly shows it as text")
+    n_out = len(wire_out)
+    core.send(node_hex, "/join #packed-test")
+    check(wait(lambda: core.stump_state[node_hex].room == "packed-test", 90)
+          and any(c[:1] == b"\xff" for c in wire_out[n_out:]),
+          "a line FireFly sends packed (/join #packed-test) is read by the Stump: '→ #packed-test'")
+    core.send(node_hex, "/join #lora-mesh")
+    wait(lambda: core.stump_state[node_hex].room == "lora-mesh", 60)
     from firefly import lan
     found = lan.find_stumps(["127.0.0.1", "255.255.255.255"], wait=2.0)
     check(node_hex in found, f"the same Stump answers STUMP? on the LAN: {found.get(node_hex, {}).get('name')} "
@@ -133,6 +166,8 @@ try:
         # The page shows its lxmf:// link as text; its lxma:// code is only in the QR picture.
         check(len(good) >= 1 and _a.parse(good[0])["stump"], f"the Stump's /address link reads, names it a Stump, "
                                                              f"and its key checks out: {good[0][:60] if good else None}…")
+        check(good and _a.parse(good[0])["release"] == version,
+              f"... and its r= (beta.79) is the beacon's release: {_a.parse(good[0])['release'] if good else None}")
     core.start_stump_auth(node_hex)
     check(wait(lambda: core.auth_state(node_hex).state == stump.AuthSession.OK, 120), "/auth handshake: AUTH-OK")
 finally:

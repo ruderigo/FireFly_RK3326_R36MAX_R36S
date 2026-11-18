@@ -14,7 +14,7 @@ re-implementation, so compatibility comes from the reference code itself.
 
 ![FireFly screens: chats, a conversation, a Stump node, the keyboard, network and setup](docs/screenshots.png)
 
-**Status:** v0.9.6 (sandbox: beta testing against [SandBox_Stump_On](https://github.com/ruderigo/SandBox_Stump_On); stable FireFly is [FireFly_RK3326_R36MAX_R36S](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S)). Runs on RK3326 handhelds with the dArkOS image of
+**Status:** v0.9.7 (sandbox: beta testing against [SandBox_Stump_On](https://github.com/ruderigo/SandBox_Stump_On); stable FireFly is [FireFly_RK3326_R36MAX_R36S](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S)). Runs on RK3326 handhelds with the dArkOS image of
 [arkos4clone](https://github.com/lcdyk0517/arkos4clone); tested on an R36MAX.
 See [Supported devices](#supported-devices).
 

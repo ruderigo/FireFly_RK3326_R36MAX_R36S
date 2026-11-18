@@ -71,6 +71,10 @@ jobs:
         timeout-minutes: 2
         run: python tests/run_stump_protocol.py
 
+      - name: Packed text (Stump 1.0.0-beta.82)
+        timeout-minutes: 2
+        run: python tests/run_packed_text.py
+
       - name: radio.json from the Stump provisioner, and the network passphrase
         timeout-minutes: 3
         run: python tests/run_radiojson.py
