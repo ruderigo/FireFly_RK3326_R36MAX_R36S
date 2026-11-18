@@ -92,7 +92,7 @@ echo "== 3/5 Reticulum + LXMF in a private environment"
 export PYTHONNOUSERSITE=1
 [ -d "$APP/venv" ] || python3 -m venv --system-site-packages "$APP/venv"
 # Exactly the versions this FireFly release was tested with.
-RNS_V=1.5.6; LXMF_V=1.2.0
+RNS_V=1.6.1; LXMF_V=1.3.1
 have() { "$APP/venv/bin/python" -c "import importlib.metadata as m, sys; sys.exit(0 if m.version('$1') == '$2' else 1)" 2>/dev/null; }
 if have rns "$RNS_V" && have lxmf "$LXMF_V"; then
   echo "   rns $RNS_V and lxmf $LXMF_V already installed, nothing to download"

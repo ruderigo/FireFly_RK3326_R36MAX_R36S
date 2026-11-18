@@ -14,7 +14,7 @@ re-implementation, so compatibility comes from the reference code itself.
 
 ![FireFly screens: chats, a conversation, a Stump node, the keyboard, network and setup](docs/screenshots.png)
 
-**Status:** v0.9.7 (sandbox: beta testing against [SandBox_Stump_On](https://github.com/ruderigo/SandBox_Stump_On); stable FireFly is [FireFly_RK3326_R36MAX_R36S](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S)). Runs on RK3326 handhelds with the dArkOS image of
+**Status:** v0.9.8 (sandbox: beta testing against [SandBox_Stump_On](https://github.com/ruderigo/SandBox_Stump_On); stable FireFly is [FireFly_RK3326_R36MAX_R36S](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S)). Runs on RK3326 handhelds with the dArkOS image of
 [arkos4clone](https://github.com/lcdyk0517/arkos4clone); tested on an R36MAX.
 See [Supported devices](#supported-devices).
 
@@ -285,7 +285,7 @@ rnsd's own config decides the interfaces.
 
 Runs on any desktop with Python 3.10+, from the `firefly/` folder:
 
-    pip install "rns==1.5.6" "lxmf==1.2.0" pygame   # plus opus-tools and codec2 for voice notes
+    pip install "rns==1.6.1" "lxmf==1.3.1" pygame   # plus opus-tools and codec2 for voice notes
     python3 -m firefly                  # window, keyboard controls
     python3 -m firefly --window 640x480 # preview a smaller screen
     python3 -m firefly --headless       # no window

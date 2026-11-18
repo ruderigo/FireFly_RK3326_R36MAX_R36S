@@ -33,6 +33,7 @@ s["share_instance"] = False
 s["tcp_peers"] = ["127.0.0.1:47501", "127.0.0.1:47502"]
 s["display_name"] = "R36 Tester"
 s["log_level"] = 2
+s["announce_stamp_value"] = 8   # Reticulum 1.6.1: a cheap announce stamp, so no test waits on one
 s.save()
 
 core = Core(paths)
@@ -110,8 +111,14 @@ wait(lambda: core.store.message(mid2)["state"] == "delivered", 40, "600-char mes
 print("     method:", core.store.message(mid2)["method"])
 
 bogus = "00" * 16
+import firefly.core as _fc
+check_wait = _fc.PATH_WAIT_S
+_fc.PATH_WAIT_S = 32      # FireFly waits 3 min (a Reticulum 1.6.1 app answers late); shortened here
 mid3 = core.send(bogus, "nobody home")
-wait(lambda: core.store.message(mid3)["state"] == "failed", 40, "message to unknown address fails cleanly")
+wait(lambda: "waiting for their path" in (core.store.message(mid3)["reason"] or ""), 20,
+     "after 15 s without its path: asked again, and the message says it's waiting for it")
+wait(lambda: core.store.message(mid3)["state"] == "failed", 30, "message to unknown address fails cleanly")
+_fc.PATH_WAIT_S = check_wait
 print("     reason:", core.store.message(mid3)["reason"])
 
 core.stop()

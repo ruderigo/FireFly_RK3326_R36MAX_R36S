@@ -42,6 +42,7 @@ DEFAULTS = {
     "voice_export_dir": "auto",      # auto = /roms(2)/firefly-voice, visible on a computer
     "screen_rotation": "auto",       # auto | 0 | 90 | 180 | 270 (clockwise); Select+R1 cycles it
     "joystick_map": {},              # raw button index -> action, for pads without a mapping
+    "announce_stamp_value": 23.5,    # Reticulum 1.6.1 announce stamp (rnsconfig.py); not in the menus
     "log_level": 3,
 }
 

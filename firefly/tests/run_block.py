@@ -28,7 +28,9 @@ def phase(n, home, bob, port):
         print(("  PASS " if c else "  FAIL ") + w, flush=True); ok = ok and bool(c)
     paths = Paths(home); paths.ensure()
     s = Settings(paths.settings); s["radio"]["enabled"] = False; s["auto_interface"] = False
-    s["share_instance"] = False; s["tcp_peers"] = [f"127.0.0.1:{port}"]; s["log_level"] = 2; s.save()
+    s["share_instance"] = False; s["tcp_peers"] = [f"127.0.0.1:{port}"]; s["log_level"] = 2
+    s["announce_stamp_value"] = 8   # Reticulum 1.6.1: a cheap announce stamp, so no test waits on one
+    s.save()
     core = Core(paths, log=lambda *a: None); core.start()
     if n == 1:
         check(wait(lambda: (core.store.peer(bob) or {}).get("name"), 20), "Bob heard")

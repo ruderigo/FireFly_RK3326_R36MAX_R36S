@@ -22,7 +22,12 @@ from .rnsconfig import write_config
 from .settings import Settings
 from .store import Store
 
-PATH_WAIT_S = 20          # how long to wait for an unknown peer's path/identity before failing
+# How long to wait for an unknown peer's path/identity before failing. A Reticulum 1.6.1 app
+# answers a path request only once its own announce stamp is made: 16 s on a fast computer the
+# first time, minutes on a phone. So, as the Stump does since 1.0.0-beta.85: up to 3 minutes,
+# asking again after the first 15 s and then every 30 s (each ask is airtime on LoRa).
+PATH_WAIT_S = 180
+PATH_ASK_AGAIN_S = (15, 30)   # first re-ask, then every
 MONITOR_INTERVAL_S = 1.0
 
 # LXMF field ids we recognise but can't render yet, described as text instead.
@@ -53,6 +58,22 @@ def commands_asked(field):
 
 
 PACKS_MAX = 512           # peers remembered as reading packed text (from their announces)
+
+STAMP_EXT_LEN = 18        # Reticulum 1.6.1's announce stamp: 0xC1, flags, 14-byte stamp, link cost
+
+
+def without_stamp(app_data):
+    """Announce app data that is plain text (a NomadNet node's name, an old LXMF app's name)
+    without a Reticulum 1.6.1 stamp still after it. Reticulum takes the stamp off what it hands
+    FireFly only when the stamp meets the cost FireFly would ask (23.5 by default), so a node
+    announcing with a cheaper one arrives with 18 bytes after its name. Its marker, 0xC1, is
+    never in UTF-8 text, so it can't be mistaken. Msgpack app data is left as it is: msgpack
+    readers stop at the end of the list (the Stump reads stamps off the same way, beta.85)."""
+    if app_data and len(app_data) >= STAMP_EXT_LEN and not ((0x90 <= app_data[0] <= 0x9f) or app_data[0] == 0xdc):
+        t = app_data[-STAMP_EXT_LEN:]
+        if t[0] == 0xC1 and not (t[-1] & 0x80) and (t[-1] & 0x7F) <= 100:
+            return app_data[:-STAMP_EXT_LEN] or None
+    return app_data
 
 
 def reads_packed(app_data):
@@ -269,15 +290,19 @@ class Core:
         "Saying you're a Stump app"): a fourth app-data item, "stump:firefly-rk3326/<version>".
         Stumps then never reword their lines for FireFly, from the first message, over LoRa too.
         Then (Stump 1.0.0-beta.82, "Packed text") a fifth, {"z": 1}: FireFly reads packed text.
-        Upstream LXMF (Sideband, NomadNet, MeshChat, Columba) reads only the first three."""
+        LXMF 1.3.1 announces four items: its fourth is the fractional stamp cost, None when no
+        stamp is asked (FireFly asks none), and readers fall back to the second when it isn't a
+        number. The tag takes that place, as Stumps put None there in their own announces.
+        Reticulum 1.6.1 adds its announce stamp after all this (it isn't part of the app data
+        LXMF builds here) and takes it off again on the receiving side."""
         orig = self.router.get_announce_app_data
 
         def app_data(destination_hash):
             data = orig(destination_hash)
             try:
                 items = msgpack.unpackb(data) if data else None
-                if isinstance(items, list) and len(items) == 3:
-                    return msgpack.packb(items + [APP_TAG] + ([{"z": 1}] if self.packed_text_on() else []))
+                if isinstance(items, list) and len(items) in (3, 4):
+                    return msgpack.packb(items[:3] + [APP_TAG] + ([{"z": 1}] if self.packed_text_on() else []))
             except Exception:
                 pass
             return data
@@ -287,6 +312,13 @@ class Core:
         self.local.display_name = self.settings["display_name"]
         self.router.announce(self.local.hash)
         self.last_announce = time.time()
+
+    def announce_stamp_pending(self):
+        """True while Reticulum 1.6.1 is still making this address's announce stamp (once per
+        address, kept afterwards). Until then it sends no announce and answers no path request."""
+        local = getattr(self, "local", None)
+        return bool(getattr(RNS.Transport, "STAMP_DESTINATIONS", False)) and local is not None \
+            and getattr(local, "stamp", True) is None
 
     def set_display_name(self, name):
         name = name.strip()[:64] or "R36 Operator"
@@ -299,6 +331,7 @@ class Core:
     def _on_delivery_announce(self, dest_hash, identity, app_data):
         if dest_hash == self.local.hash or dest_hash.hex() in self._blocked:
             return
+        app_data = without_stamp(app_data)
         self._note_packs(dest_hash.hex(), app_data)
         name = LXMF.display_name_from_app_data(app_data) if app_data else None
         hops = RNS.Transport.hops_to(dest_hash)
@@ -405,6 +438,7 @@ class Core:
             self._auto_pick_propagation()
 
     def _on_nomad_announce(self, dest_hash, app_data):
+        app_data = without_stamp(app_data)
         try:
             name = app_data.decode("utf-8") if app_data else None
         except Exception:
@@ -489,14 +523,23 @@ class Core:
                          daemon=True).start()
         return msg_id
 
-    def _recall(self, dest_hash, wait=PATH_WAIT_S):
+    def _recall(self, dest_hash, wait=None, on_slow=None):
+        """The peer's identity, asking the network for its path when it isn't known yet.
+        on_slow() is called once, when the first answer is late (the message says why it waits)."""
+        wait = PATH_WAIT_S if wait is None else wait
         ident = RNS.Identity.recall(dest_hash)
         if ident is None:
             RNS.Transport.request_path(dest_hash)
-            deadline = time.time() + wait
-            while ident is None and time.time() < deadline and self.running:
+            start = time.time()
+            next_ask = start + PATH_ASK_AGAIN_S[0]
+            while ident is None and time.time() < start + wait and self.running:
                 time.sleep(0.5)
                 ident = RNS.Identity.recall(dest_hash)
+                if ident is None and time.time() >= next_ask:
+                    if on_slow is not None and next_ask == start + PATH_ASK_AGAIN_S[0]:
+                        on_slow()
+                    RNS.Transport.request_path(dest_hash)
+                    next_ask += PATH_ASK_AGAIN_S[1]
         return ident
 
     def _send_web(self, web, msg_id, peer_hex, text, title):
@@ -533,7 +576,14 @@ class Core:
             self._written_to.add(peer_hex)
         if first and time.time() - self.last_announce > 30:
             self.announce()
-        ident = self._recall(dest_hash)
+        slow = []
+        def on_slow():
+            slow.append(1)
+            self.store.update_message(msg_id, reason="waiting for their path (up to 3 min: "
+                                                     "a new Reticulum app answers once ready)")
+        ident = self._recall(dest_hash, on_slow=on_slow)
+        if ident is not None and slow:
+            self.store.update_message(msg_id, reason=None)
         if ident is None:
             self.store.update_message(msg_id, state="failed",
                                       reason="unknown peer: no announce or path heard yet")

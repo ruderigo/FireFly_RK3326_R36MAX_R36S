@@ -19,7 +19,9 @@ pn, pn_addr = spawn("pn", 47601, "--pn")
 carol, carol_addr = spawn("carol", 47602, "--quit-after", "8")
 paths = Paths(os.path.join(tmp, "me")); paths.ensure()
 s = Settings(paths.settings); s["radio"]["enabled"] = False; s["auto_interface"] = False; s["share_instance"] = False
-s["tcp_peers"] = ["127.0.0.1:47601", "127.0.0.1:47602"]; s["log_level"] = 2; s.save()
+s["tcp_peers"] = ["127.0.0.1:47601", "127.0.0.1:47602"]; s["log_level"] = 2
+s["announce_stamp_value"] = 8   # Reticulum 1.6.1: a cheap announce stamp, so no test waits on one
+s.save()
 core = Core(paths, log=lambda *a: None); core.start()
 ok = True
 def wait(c, secs, what):

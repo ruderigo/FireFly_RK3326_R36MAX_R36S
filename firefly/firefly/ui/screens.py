@@ -733,6 +733,8 @@ class NetworkTab(Screen):
             out.append(("m", "Using a shared Reticulum instance (rnsd): its config decides the interfaces."))
         if core.status_note:
             out.append(("err", core.status_note))
+        if core.announce_stamp_pending():
+            out.append(("m", "Making this address's announce stamp (once): others can reach you when it's done."))
         if getattr(core, "radio_json_note", ""):
             out.append(("m", core.radio_json_note))
         for i in self._stats.get("interfaces", []):

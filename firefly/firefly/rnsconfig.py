@@ -48,13 +48,33 @@ def resolve_port(setting, log=print):
 def _yn(b): return "Yes" if b else "No"
 
 
+# Reticulum 1.6.1 stamps every announce (proof of work, made once per address and kept in
+# storage/stamps) and answers no path request before that stamp exists. Its default target
+# is 25; a node that enforces stamps asks 23.5 by default, and a 1.6.1 node takes the stamp
+# off the app data it hands its apps only when the stamp meets that 23.5. FireFly aims at
+# exactly 23.5: accepted everywhere a default 1.6.1 node is, and about 2.8 times less work
+# than 25 (2^23.5 against 2^25 hashes) on a slow handheld's first start. Settings
+# "announce_stamp_value" changes it (not in the menus; the tests use a cheap one).
+ANNOUNCE_STAMP_VALUE = 23.5
+
+
+def stamp_value(settings):
+    try:
+        v = float(settings.get("announce_stamp_value", ANNOUNCE_STAMP_VALUE))
+    except (TypeError, ValueError):
+        v = ANNOUNCE_STAMP_VALUE
+    return max(0.0, min(v, 100.0))
+
+
 def build_config(settings, rnode_port=None):
     s = settings
     lines = [HEADER, "[reticulum]",
              f"  enable_transport = {_yn(s['transport'])}",
              f"  share_instance = {_yn(s['share_instance'])}",
              "  panic_on_interface_error = No",
-             "", "[logging]", f"  loglevel = {int(s['log_level'])}", "", "[interfaces]"]
+             "", "[logging]", f"  loglevel = {int(s['log_level'])}",
+             "", "[stamps]", f"  destination_value = {stamp_value(s)}",
+             "", "[interfaces]"]
 
     # Neither the LoRa radio nor local network discovery is configured here:
     # the radio manager attaches whichever RNode it finds, and the LAN manager
