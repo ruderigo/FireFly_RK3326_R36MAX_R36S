@@ -47,6 +47,10 @@ jobs:
         timeout-minutes: 2
         run: python tests/run_chat_selector.py
 
+      - name: A Stump's rooms one at a time, and the STUMPS tab
+        timeout-minutes: 2
+        run: python tests/run_rooms.py
+
       - name: Radio manager against simulated RNodes
         timeout-minutes: 3
         run: python tests/run_radio.py

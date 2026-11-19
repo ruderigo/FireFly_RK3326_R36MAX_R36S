@@ -186,6 +186,8 @@ class StumpWeb:
             self.room = ns.room
         if d.get("nick"):
             self.nick = d["nick"]
+        if isinstance(d.get("rooms"), list):
+            ns.set_rooms(d["rooms"])
         msgs = sorted((d.get("messages") or []) + (d.get("dms") or []), key=lambda m: m.get("id", 0))
         first = self.since is None
         top = self.since or 0

@@ -234,13 +234,69 @@ class NodeState:
     def __init__(self):
         self.room = None          # where the node says we are
         self.refused = None       # last tier refusal: (room, tier, sentence)
+        self.rooms = {}           # room -> {"count", "tier", "topic"}: its /rooms answer (or Wi-Fi poll's list)
+        self.room_order = []      # the rooms in the node's own order
 
     def update(self, items):
+        listed = [it for it in items if it["kind"] == "room"]
+        if listed:                # a /rooms answer: the node's whole list, in its order
+            self.room_order = [it["room"] for it in listed]
+            self.rooms = {it["room"]: {"count": it["count"], "tier": it["tier"], "topic": it["topic"]} for it in listed}
         for it in items:
             if it["kind"] in ("moved", "already_in"):
                 self.room = it["room"]
             elif it["kind"] == "refused":
                 self.refused = (it["room"], it["tier"], it["text"])
+
+    def set_rooms(self, names):
+        """The rooms a Wi-Fi poll lists (names only: counts come with /rooms)."""
+        names = [room_name(n) for n in names or [] if isinstance(n, str) and n.strip()]
+        if names:
+            self.room_order = names
+            self.rooms = {n: self.rooms.get(n, {}) for n in names}
+
+
+# ---------------------------------------------------------------- one room at a time
+DM_VIEW = "\x00dm"                 # the private messages' pane (not a room name)
+_MSG_CMD = re.compile(r"^/(msg|m|query)\s+\S+", re.I)
+
+
+def file_messages(msgs):
+    """Which room each stored message of a Stump conversation belongs to, as the
+    Stump's chat page shows one room at a time. Returns [(message, room, part)],
+    part "room" or "dm"; a message carrying both room lines and DMs is listed
+    once for each. A batch titled #room is that room's; everything else (our
+    own lines, the Stump's answers) is in the room we were in then, followed
+    from the Stump's own "→ #room" and "= #room" lines."""
+    out, here = [], None
+    for m in msgs:
+        content, title = m.get("content") or "", m.get("title") or ""
+        if m.get("outgoing"):
+            out.append((m, here, "dm" if _MSG_CMD.match(content.strip()) else "room"))
+            continue
+        items = parse_message(content, title) if content else []
+        titled = room_name(title) if title.startswith("#") else None
+        for it in items:
+            if it["kind"] in ("moved", "already_in"):
+                here = it["room"]
+        dms = [it for it in items if it["kind"] == "dm"]
+        if dms or (m.get("audio_mode") is not None and not titled):
+            out.append((m, None, "dm"))
+        if len(dms) < len(items) or not items and not (m.get("audio_mode") is not None and not titled):
+            out.append((m, titled or here, "room"))
+    return out
+
+
+def rooms_seen(filed, ns=None):
+    """The rooms to offer, in order: the node's own list, then any other room
+    a line was filed in, then where the node says we are."""
+    names = list((ns.room_order if ns else []) or [])
+    for _, room, part in filed:
+        if part == "room" and room and room not in names:
+            names.append(room)
+    if ns and ns.room and room_name(ns.room) not in names:
+        names.append(room_name(ns.room))
+    return names
 
 
 def is_mesh_nick(nick):

@@ -53,6 +53,10 @@ st.add_message(stp, False, "✓ ~Rod\n<alice> welcome, mesh friend!\n* alice wav
 st.add_message(stp, False, "[DM] <bob>: psst, bring snacks", "received", ts=now-300, unread=True)
 st.add_message(stp, True, "/join #vip", "delivered", ts=now-200)
 st.add_message(stp, False, "⊘ #vip minted — ce salon exige une identité vérifiée -- envoyez /auth", "received", ts=now-190, unread=True)
+core.stump_state[stp].update(_stump.parse_message("#main ·3 Bienvenue\n#lora-mesh ·2 [LoRa]\n#wifi-mesh ·4 [Wi-Fi]\n#jardin ·1 potager", ""))
+cab = "b0b0cafe00112233445566778899aabb"
+st.upsert_peer(cab, "lxmf", name="LaBuche3", hops=3, stump="LaBuche3", stump_ver="1.0.0-beta.87")
+core.stumps[cab] = ("LaBuche3", "1.0.0-beta.87")
 
 import pygame
 from firefly.ui.app import App
@@ -61,10 +65,13 @@ from firefly.ui.widgets import Compose, Menu
 app = App(core, size=size)
 def shot(name):
     app.render(); pygame.image.save(app.surf, f"{out}/{name}.png")
-for i, n in enumerate(["chats", "peers", "network", "setup"]):
+for i, n in enumerate(["chats", "stumps", "peers", "network", "setup"]):
     app.switch_tab(i); shot(n)
 app.switch_tab(0); app.push(ChatScreen(app, bob)); shot("chat_bob")
 app.stack.clear(); app.push(ChatScreen(app, stp)); shot("chat_stump")
+app.current.handle("right"); app.current.handle("right"); shot("chat_stump_joining")   # → two rooms on: its /join, once
+app.current.handle("right"); shot("chat_stump_dms")       # → its private messages
+app.stack.clear(); app.push(ChatScreen(app, stp))
 app.handle = None
 app.current.handle("y"); shot("menu_stump")
 app.stack.clear(); app.push(ChatScreen(app, bob))

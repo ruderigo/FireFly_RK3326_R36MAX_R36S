@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.9.9 (sandbox)
+Build 86 (Stump 1.0.0-beta.86). A Stump's rooms the way the Stump's chat
+page and the Android FireFly show them.
+- **A STUMPS tab**, after CHATS: every Stump FireFly knows, one row each —
+  ● when it answers (on the Wi-Fi, or heard over LoRa in the last half
+  hour), LoRa / Wi-Fi / both and its hops, the room you're in, *verified ✓*,
+  and its unread count. CHATS lists people only; each tab counts its own
+  unread messages. (PEERS, NETWORK and SETUP move one tab to the right; the
+  tab labels shrink to fit the 640-wide screen.)
+- **One room at a time.** A Stump's conversation used to be one stream of
+  every room, with a `#room` label where it changed, DMs mixed in. Now its
+  rooms are pills under the header (the Stump's own list from `/rooms` or
+  its Wi-Fi poll, with how many are in each and *minted* / *hybrid* marked;
+  any other room a line came from), and only the room shown is drawn.
+  Each line goes where it belongs: a batch titled `#room` is that room's;
+  your own lines and the Stump's answers are in the room it had you in
+  then, followed from its own `→ #room` lines, so older conversations sort
+  themselves too.
+- **←/→ moves between rooms**, showing that room's lines at once. One
+  `/join` is sent when you stop on a room for a second (not one per step,
+  which over LoRa would have queued a join per pill). The pill reads `…`
+  until the Stump has you there; refused, the screen goes back where it
+  has you and says why; no answer in two minutes, it says so.
+- **DMs pill**, after the rooms: the Stump's private messages to you and
+  your `/msg`s, with how many are new. A on one writes to its author
+  (`/msg <name>`); START writes to anyone.
+- The hint bar fits its hints closer together when they'd run off a narrow
+  screen.
+- Tests: `tests/run_rooms.py` (filing, the pills, one `/join` once the
+  choice rests, the Stump's answer and refusal, DM replies, the STUMPS tab,
+  both screen sizes; in CI). `run_stumpweb.py`'s room-label check now
+  checks one room at a time instead.
+
 ## 0.9.8 (sandbox)
 Build 86 (Stump 1.0.0-beta.86). Reticulum 1.6.1 and LXMF 1.3.1 (out 18 Nov),
 instead of 1.5.6 and 1.2.0: `install.sh` downloads them on the next update

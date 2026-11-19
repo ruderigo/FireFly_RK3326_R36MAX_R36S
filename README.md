@@ -14,7 +14,7 @@ re-implementation, so compatibility comes from the reference code itself.
 
 ![FireFly screens: chats, a conversation, a Stump node, the keyboard, network and setup](docs/screenshots.png)
 
-**Status:** v0.9.8 (sandbox: beta testing against [SandBox_Stump_On](https://github.com/ruderigo/SandBox_Stump_On); stable FireFly is [FireFly_RK3326_R36MAX_R36S](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S)). Runs on RK3326 handhelds with the dArkOS image of
+**Status:** v0.9.9 (sandbox: beta testing against [SandBox_Stump_On](https://github.com/ruderigo/SandBox_Stump_On); stable FireFly is [FireFly_RK3326_R36MAX_R36S](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S)). Runs on RK3326 handhelds with the dArkOS image of
 [arkos4clone](https://github.com/lcdyk0517/arkos4clone); tested on an R36MAX.
 See [Supported devices](#supported-devices).
 
@@ -237,11 +237,27 @@ In a chat with a Stump node, lines are coloured by meaning (DMs purple,
 activity dim) and the peer menu offers *verify my identity*, `/rooms` and
 `/names`. Rooms/DM thread views are the next step.
 
+## Stumps and their rooms
+
+**STUMPS** (the tab after CHATS) lists every Stump FireFly knows, as the
+Android FireFly does: ● when it answers (on the Wi-Fi, or heard over LoRa
+in the last half hour), how it's reached (LoRa, Wi-Fi, both) and how many
+hops, the room you're in, *verified ✓*, and what's new. CHATS keeps people.
+
+Inside a Stump, one room at a time, as on the Stump's own chat page: its
+rooms as pills under the header (how many are in each, *minted* or
+*hybrid* rooms marked), the one shown lit, the one the Stump has you in
+outlined. **←/→** moves between them and shows that room's lines at once;
+when you stop on one for a second FireFly sends one `/join`, and the pill
+reads `…` until the Stump has you there (or says why not). After the
+rooms, **DMs**: the Stump's private messages to you, with how many are new;
+A on one answers its author (`/msg`), START writes to anyone.
+
 ## Controls
 
 | Button | Lists | Chat | Keyboard |
 |---|---|---|---|
-| D-pad | move | scroll | move |
+| D-pad | move | scroll (a Stump: ←/→ its rooms, then its DMs) | move |
 | A | open / select | write | type key |
 | B | back | back | delete |
 | X | tab action (new chat / save / sync) | quick replies | space |
