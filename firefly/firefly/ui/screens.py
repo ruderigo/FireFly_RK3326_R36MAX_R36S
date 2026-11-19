@@ -69,10 +69,14 @@ class ChatsTab(ListScreen):
     hints = [("A", "open"), ("X", "new"), ("Y", "menu"), ("L/R", "tabs")]
 
     def rows(self):
-        return self.app.core.store.conversations()
+        core = self.app.core
+        return [c for c in core.store.conversations() if not (c["stump"] or core.is_stump(c["peer"]))]
+
+    def badge(self):
+        return sum(c["unread"] for c in self.rows())
 
     def empty_text(self):
-        return "No conversations. X to start one."
+        return "No conversations. X to start one. (Stumps: the STUMPS tab.)"
 
     def handle(self, action):
         rows = self.rows()
@@ -82,7 +86,7 @@ class ChatsTab(ListScreen):
         elif action == "a" and rows:
             self.app.push(ChatScreen(self.app, rows[self.sel]["peer"]))
         elif action == "x":
-            self.app.switch_tab(1)
+            self.app.switch_tab(2)
         elif action == "y" and rows:
             peer = rows[self.sel]["peer"]
             self.app.push(Menu(self.app, "Conversation", [
@@ -113,6 +117,83 @@ class ChatsTab(ListScreen):
         self.draw_list(surf, f, self.rows(), self.app.content_top, row, f.line * 2 + 12)
 
 
+# ======================================================================== STUMPS
+class StumpsTab(ListScreen):
+    """Every Stump FireFly knows, as the Android FireFly lists them: whether it
+    answers, how it's reached, the room we're in, verified, what's new."""
+    title = "STUMPS"
+    hints = [("A", "open"), ("Y", "menu"), ("L/R", "tabs")]
+
+    def rows(self):
+        core, now = self.app.core, time.time()
+        convs = {c["peer"]: c for c in core.store.conversations()}
+        out = []
+        for h, (name, ver) in list(core.stumps.items()):
+            p = core.store.peer(h) or {}
+            c = convs.get(h) or {}
+            web = core.web.get(h)
+            online = bool(web is not None and getattr(web, "online", False))
+            heard = p.get("last_heard") or 0
+            hops = core.hops(h)
+            ns = core.stump_state.get(h)
+            a = core.auth_state(h)
+            out.append({"peer": h, "name": name or p.get("name") or D.short_hash(h), "ver": ver,
+                        "wifi": online, "lora": hops is not None, "hops": hops,
+                        "alive": online or now - heard < 1800,
+                        "room": stump.room_name(ns.room) if ns and ns.room else None,
+                        "verified": bool(a and a.state == a.OK), "unread": c.get("unread") or 0,
+                        "ts": max(c.get("ts") or 0, heard)})
+        return sorted(out, key=lambda r: (not r["alive"], -r["ts"]))
+
+    def badge(self):
+        return sum(r["unread"] for r in self.rows())
+
+    def empty_text(self):
+        return "No Stump yet: one appears here when it's heard."
+
+    def handle(self, action):
+        rows = self.rows()
+        self.sel = min(self.sel, max(0, len(rows) - 1))
+        if action in ("up", "down"):
+            self.move(action, len(rows))
+        elif action == "a" and rows:
+            self.app.push(ChatScreen(self.app, rows[self.sel]["peer"]))
+        elif action == "y" and rows:
+            peer = rows[self.sel]["peer"]
+            self.app.push(Menu(self.app, rows[self.sel]["name"], [
+                ("Open", lambda: self.app.push(ChatScreen(self.app, peer))),
+                ("Mark read", lambda: self.app.core.store.mark_read(peer)),
+            ] + PeerActions(self.app, peer).items()))
+
+    def draw(self, surf, f):
+        now = time.time()
+
+        def row(s, f, rect, r, sel):
+            dot = "●" if r["alive"] else "○"
+            D.text(s, f.mono, dot, (rect.x + 10, rect.y + 4), T.EMBER if r["alive"] else T.DIM)
+            x = rect.x + 12 + f.mono.size("● ")[0]
+            D.text(s, f.mono, D.ellipsize(f.mono, r["name"], rect.w - (x - rect.x) - 110), (x, rect.y + 4),
+                   T.EMBER_BRIGHT if sel else T.TEXT)
+            if r["ts"]:
+                D.text(s, f.mono_small, D.ago(r["ts"], now), (rect.right - 10, rect.y + 6), T.MUTED, right=True)
+            via = ("Wi-Fi + LoRa" if r["wifi"] and r["lora"] else "Wi-Fi" if r["wifi"] else "LoRa")
+            bits = [via]
+            if r["lora"] and r["hops"] is not None:
+                bits.append(f"{r['hops']} hop{'s' if r['hops'] != 1 else ''}")
+            if r["room"]:
+                bits.append("#" + r["room"])
+            if r["verified"]:
+                bits.append("verified ✓")
+            D.text(s, f.mono_small, D.ellipsize(f.mono_small, "  ·  ".join(bits), rect.w - 70),
+                   (x, rect.y + 6 + f.line), T.MUTED)
+            if r["unread"]:
+                badge = pygame.Rect(rect.right - 44, rect.y + 6 + f.line, 34, f.line - 4)
+                D.box(s, badge, T.EMBER, 8)
+                D.text(s, f.mono_small, str(r["unread"]), badge.center[0:1] + (badge.y,), T.BG, center=True)
+
+        self.draw_list(surf, f, self.rows(), self.app.content_top, row, f.line * 2 + 12)
+
+
 # ======================================================================== chat thread
 def _clock(secs):
     """The voice-note spec's label: '5.0 s', tenths rounded half up."""
@@ -129,6 +210,15 @@ class ChatScreen(Screen):
         self.peer = peer
         self.sel_id = None        # selected message id; None = follow the newest
         self.offset = 0           # pixels the view is scrolled up from the bottom
+        # A Stump: one room at a time, as its chat page shows them (←/→ between
+        # its rooms, then its private messages). None: the room the Stump has us in.
+        self.view = None
+        self.joining = None       # (room, since, the refusal known before): a /join on its way
+        self.pending = None       # (room, at): picked with ←/→; joined once the choice rests a second
+        self._part = {}           # message id -> "room" | "dm": which lines of it this view shows
+        # Private messages not seen yet: newer than the newest message already read when opened.
+        read = [m["ts"] for m in app.core.store.messages(peer) if not m["unread"]]
+        self.dm_seen = max(read) if read else 0.0
 
     @property
     def title(self):
@@ -136,7 +226,94 @@ class ChatScreen(Screen):
 
     # ------------------------------------------------ selection
     def _messages(self):
-        return self.app.core.store.messages(self.peer)
+        msgs = self.app.core.store.messages(self.peer)
+        if not self.app.core.is_stump(self.peer):
+            return msgs
+        view = self.shown_view()
+        out, self._part = [], {}
+        for m, room, part in stump.file_messages(msgs):
+            if (part == "dm") if view == stump.DM_VIEW else (part == "room" and (room or self._first_room()) == view):
+                if m["id"] not in self._part:
+                    out.append(m)
+                self._part[m["id"]] = part
+        return out
+
+    # ------------------------------------------------ a Stump's rooms
+    def _ns(self):
+        return self.app.core.stump_state.get(self.peer)
+
+    def _first_room(self):
+        ns = self._ns()
+        return stump.room_name(ns.room) if ns and ns.room else "main"
+
+    def rooms(self):
+        """The Stump's rooms to move between with ←/→, then its private messages."""
+        ns = self._ns()
+        names = stump.rooms_seen(stump.file_messages(self.app.core.store.messages(self.peer)), ns)
+        here = self._first_room()
+        if here not in names:
+            names.append(here)
+        if self.view and self.view != stump.DM_VIEW and self.view not in names:
+            names.append(self.view)
+        return names + [stump.DM_VIEW]
+
+    JOIN_REST_S = 1.0
+
+    def shown_view(self):
+        """The room (or the private messages) on screen."""
+        ns = self._ns()
+        if self.pending and time.time() - self.pending[1] >= self.JOIN_REST_S:
+            room, self.pending = self.pending[0], None   # rested on it: now ask the Stump (one /join, not one per step)
+            if not ns or not ns.room or stump.room_name(ns.room) != room:
+                self.joining = (room, time.time(), ns.refused if ns else None)
+                self.app.core.send(self.peer, "/join #" + room, "opportunistic")
+        if self.joining:
+            room, since, refused_before = self.joining
+            if ns and ns.room and stump.room_name(ns.room) == room:
+                self.joining = None                     # the Stump has us there
+            elif ns and ns.refused != refused_before and ns.refused and ns.refused[0] == room:
+                self.joining = None                     # refused: back where it has us
+                self.view = None
+                self.app.toast(f"#{room}: {ns.refused[2]}", 5)
+            elif time.time() - since > 120:
+                self.joining = None
+                self.app.toast(f"No answer from the Stump about #{room} yet", 4)
+        if (self.view is not None and self.view != stump.DM_VIEW and ns and ns.room
+                and stump.room_name(ns.room) == self.view and not self.joining):
+            self.view = None                            # there now: follow the Stump again
+        return self.view or self._first_room()
+
+    def switch_room(self, d):
+        names = self.rooms()
+        cur = self.shown_view()
+        i = names.index(cur) if cur in names else 0
+        target = names[(i + d) % len(names)]
+        self.sel_id, self.offset = None, 0
+        ns = self._ns()
+        self.view = target
+        self.pending = None
+        if target == stump.DM_VIEW:
+            return
+        if not ns or not ns.room or stump.room_name(ns.room) != target:
+            self.pending = (target, time.time())         # its lines at once; the /join when the choice rests
+        else:
+            self.view, self.joining = None, None
+
+    def _dm_author(self, m):
+        if m is None or m["outgoing"]:
+            mm = stump._MSG_CMD.match((m or {}).get("content") or "")
+            return ((m or {}).get("content") or "").split()[1] if mm else None
+        return next((p["author"] for p in stump.parse_message(m["content"] or "", m["title"] or "")
+                     if p["kind"] == "dm"), None)
+
+    def _compose_dm(self, m=None):
+        who = self._dm_author(m)
+        if who:
+            self.app.push(Compose(self.app, f"Private to {who} (on {self.title})",
+                                  lambda t, who=who: self._send(f"/msg {who} {t}")))
+        else:
+            self.app.push(Compose(self.app, "Private message: /msg <name> <text>", lambda t: self._send(t),
+                                  initial="/msg "))
 
     def _selected(self, msgs):
         if not msgs:
@@ -160,11 +337,14 @@ class ChatScreen(Screen):
         msgs = self._messages()
         m = self._selected(msgs)
         h = [("↑↓", "select")]
+        stump_dm = self.app.core.is_stump(self.peer) and self.shown_view() == stump.DM_VIEW
+        if self.app.core.is_stump(self.peer):
+            h.append(("←→", "rooms"))
         if m is not None and m.get("audio_mode") is not None:
             playing = self.app.player.busy() and self.app.player.playing_id == m["id"]
             h.append(("A", "stop" if playing else "play"))
         elif m is not None:
-            h.append(("A", "details"))
+            h.append(("A", "reply" if stump_dm else "details"))
         h += [("START", "write"), ("X", "quick"), ("Y", "menu"), ("B", "back")]
         return h
 
@@ -192,6 +372,14 @@ class ChatScreen(Screen):
             self._move(msgs, -5)
         elif action == "r1":
             self.sel_id = None
+        elif action in ("left", "right") and core.is_stump(self.peer):
+            self.switch_room(-1 if action == "left" else 1)
+        elif action in ("a", "start") and core.is_stump(self.peer) and self.shown_view() == stump.DM_VIEW:
+            m = self._selected(msgs)
+            if action == "a" and m is not None and m.get("audio_mode") is not None:
+                self.play(m)
+            else:
+                self._compose_dm(m if action == "a" or self.sel_id is not None else None)
         elif action == "a":
             m = self._selected(msgs)
             if m is None:
@@ -255,8 +443,6 @@ class ChatScreen(Screen):
         if core.is_stump(self.peer):
             info.append("Stump node " + (p or {}).get("stump", ""))
             ns = core.stump_state.get(self.peer)
-            if ns and ns.room:
-                info.append("in #" + ns.room)
             w = core.web.get(self.peer)
             if w is not None:
                 info.append({"online": f"over Wi-Fi as {w.nick}", "greeting": "Wi-Fi: greeting…",
@@ -265,23 +451,22 @@ class ChatScreen(Screen):
             if a:
                 info.append({a.OK: "verified ✓", a.FAILED: "verify failed"}.get(a.state, "verifying…"))
         top += f.line + 4
+        pills_y = top
+        if core.is_stump(self.peer):
+            top += f.mono_small.get_linesize() + 14
 
         msgs = self._messages()
         if not msgs:
-            D.text(surf, f.mono, "Say hello: press START to write, X for quick replies.", (W // 2, H // 2),
-                   T.MUTED, center=True)
+            empty = "Say hello: press START to write, X for quick replies."
+            if core.is_stump(self.peer):
+                empty = ("No private messages here yet. START: /msg someone." if self.shown_view() == stump.DM_VIEW
+                         else "Nothing said in this room yet. START to write.")
+            D.text(surf, f.mono, empty, (W // 2, H // 2), T.MUTED, center=True)
         else:
             sel = self._selected(msgs)
             maxw = W * 3 // 4
             is_stump = core.is_stump(self.peer)
-            blocks, room_shown = [], None
-            for m in msgs:
-                # The room label only where the room changes, not on every line of it.
-                room = m["title"] if is_stump and not m["outgoing"] and (m["title"] or "").startswith("#") else None
-                label = room is not None and stump.room_name(room) != room_shown
-                if room is not None:
-                    room_shown = stump.room_name(room)
-                blocks.append((m, *self._layout(m, f, maxw, is_stump, label)))
+            blocks = [(m, *self._layout(m, f, maxw, is_stump, False, self._part.get(m["id"]))) for m in msgs]
             # Virtual column, newest at the bottom: y measured upward from the bottom edge.
             bottom = H - f.line - 16
             view_h = bottom - top
@@ -313,9 +498,64 @@ class ChatScreen(Screen):
                (14, self.app.content_top), T.MUTED)
         if msgs and self.offset > 0:
             D.text(surf, f.mono_small, "▼ newer below (R1)", (W - 12, self.app.content_top), T.EMBER, right=True)
+        if core.is_stump(self.peer):
+            self._draw_rooms(surf, f, pills_y)
 
-    def _layout(self, m, f, maxw, is_stump, room_label=True):
-        """Returns (height, painter) for one message bubble."""
+    def _draw_rooms(self, surf, f, y):
+        """The Stump's rooms as pills, as on its chat page: the one shown lit,
+        the one being joined blinking "…" until the Stump has us there."""
+        W = surf.get_width()
+        fs = f.mono_small
+        h = fs.get_linesize() + 8
+        pygame.draw.rect(surf, T.SIDEBAR, (0, y - 2, W, h + 6))
+        ns = self._ns()
+        shown = self.shown_view()
+        here = self._first_room()
+        joining = self.joining[0] if self.joining else (self.pending[0] if self.pending else None)
+        if shown == stump.DM_VIEW:
+            self.dm_seen = time.time()
+        unread_dm = sum(1 for m, _, part in stump.file_messages(self.app.core.store.messages(self.peer))
+                        if part == "dm" and not m["outgoing"] and m["ts"] > self.dm_seen)
+        pills = []
+        for r in self.rooms():
+            if r == stump.DM_VIEW:
+                label = "DMs" + (f" {unread_dm}" if unread_dm else "")
+            else:
+                info = (ns.rooms.get(r) if ns else None) or {}
+                label = "#" + r
+                if info.get("tier") in ("minted", "hybrid"):
+                    label += " ·" + info["tier"]
+                if isinstance(info.get("count"), int):
+                    label += f" {info['count']}"
+                if r == joining:
+                    label += " …"
+            pills.append((r, label, fs.size(label)[0] + 16))
+        # Scrolled so the one shown is always in view.
+        x0, x = 0, 10
+        for r, label, w in pills:
+            if r == shown and x + w > W - 10:
+                x0 = x + w - (W - 10)
+            x += w + 6
+        x = 10 - x0
+        blink = int(time.time() * 2) % 2 == 0
+        for r, label, w in pills:
+            if x + w > 0 and x < W:
+                rect = pygame.Rect(x, y + 1, w, h)
+                dm = r == stump.DM_VIEW
+                lit = r == shown
+                accent = T.DM_BODY if dm else T.EMBER
+                if lit:
+                    D.box(surf, rect, accent if not (r == joining and not blink) else T.PANEL, 5)
+                else:
+                    D.box(surf, rect, T.BG, 5, accent if r == here and not dm else T.BORDER)
+                col = T.BG if lit and not (r == joining and not blink) else (accent if r == here or dm else T.MUTED)
+                D.text(surf, fs, label, (x + 8, y + 5), col)
+            x += w + 6
+
+    def _layout(self, m, f, maxw, is_stump, room_label=True, part=None):
+        """Returns (height, painter) for one message bubble. part: in a Stump's
+        room view only its room lines ("room"), in its private messages only
+        the DMs ("dm")."""
         W = self.app.screen_w
         out = m["outgoing"]
         lines = []   # (font, text, color)
@@ -323,6 +563,8 @@ class ChatScreen(Screen):
             if room_label and m["title"] and m["title"].startswith("#"):
                 lines.append((f.mono_small, "#" + stump.room_name(m["title"]), T.EMBER))   # the room this batch belongs to
             for parsed in stump.parse_message(m["content"], m["title"] or ""):
+                if part is not None and (parsed["kind"] == "dm") != (part == "dm"):
+                    continue
                 lines += [(f.body, ln, c) for ln, c in _stump_render(parsed, f, maxw - 20)]
         elif m["content"] and not out and m.get("renderer") in (1, 2, 3):
             lines = _formatted(m["content"], m["renderer"], f, maxw - 20)

@@ -153,10 +153,14 @@ core.store.add_message(P2, False, "<y> lora again", "received", title="#lxmf")
 app = App(core, size=(640, 480))
 seen = []
 orig = screens.ChatScreen._layout
-screens.ChatScreen._layout = lambda self, m, f, maxw, is_stump, room_label=True: (seen.append(room_label), orig(self, m, f, maxw, is_stump, room_label))[1]
-app.push(screens.ChatScreen(app, P2)); app.render()
+screens.ChatScreen._layout = lambda self, m, f, maxw, is_stump, room_label=True, part=None: (
+    seen.append((m["content"], room_label)), orig(self, m, f, maxw, is_stump, room_label, part))[1]
+chat = screens.ChatScreen(app, P2); app.push(chat); app.render()
+check(seen == [("<y> in main", False)], f"one room at a time (#main, no room labels needed): {seen}")
+seen.clear(); chat.view = "lora-mesh"; app.render()
 screens.ChatScreen._layout = orig
-check(seen == [True, False, False, True, True], f"the room label only where the room changes: {seen}")
+check([t for t, _ in seen] == ["<x> first", "<x> second (Stump clock off)", "<x> third (Stump clock off)",
+                               "<y> lora again"], f"#lora-mesh's lines, #lxmf's included, in order: {seen}")
 core.stop(); srv.shutdown()
 print("ALL PASSED" if ok else "SOME FAILED")
 sys.stdout.flush(); os._exit(0 if ok else 1)

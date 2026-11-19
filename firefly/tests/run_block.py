@@ -107,12 +107,12 @@ def screens():
     check(not core.store.messages(bob) and core.store.peer(bob) is None, "conversation and contact deleted")
     check(not any(isinstance(sc, ChatScreen) for sc in app.stack), "the chat closes")
     check(core.store.peer(ann) is not None and core.store.messages(ann), "other conversations untouched")
-    app.switch_tab(1); tab = app.tabs[1]
+    app.switch_tab(2); tab = app.tabs[2]
     rows = tab.rows(); tab.sel = next(i for i, r in enumerate(rows) if r.get("hash") == ann)
     app.action("y"); app.current.sel = [l for l, _ in app.current.items].index("Block"); app.action("a")
     app.action("down"); app.action("a")
     check(core.is_blocked(ann) and core.store.peer(ann) is None, "blocked from the PEERS tab")
-    app.switch_tab(3); st = app.tabs[3]
+    app.switch_tab(4); st = app.tabs[4]
     st.sel = [r[0] for r in st.rows()].index("blocked"); app.render()
     check(dict((r[0], r[2]) for r in st.rows())["blocked"] == "1", "SETUP shows 1 blocked")
     app.action("a"); check("Unblock Ann" in app.current.items[0][0], "SETUP > Blocked lists Ann by name")

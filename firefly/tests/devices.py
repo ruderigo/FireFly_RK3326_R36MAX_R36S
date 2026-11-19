@@ -46,7 +46,7 @@ try:
         pygame.display.quit(); pygame.display.init()
         app = App(core, size=(w, h))
         lw, lh = app.surf.get_size()
-        for name, setup in (("chats", lambda: app.switch_tab(0)), ("setup", lambda: app.switch_tab(3)),
+        for name, setup in (("chats", lambda: app.switch_tab(0)), ("setup", lambda: app.switch_tab(4)),
                             ("chat", lambda: (app.switch_tab(0), app.push(ChatScreen(app, bob))))):
             setup()
             app.render()

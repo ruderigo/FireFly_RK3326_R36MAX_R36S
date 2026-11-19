@@ -7,7 +7,7 @@ import pygame
 
 from . import draw as D
 from . import theme as T
-from .screens import ChatsTab, NetworkTab, PeersTab, SettingsTab
+from .screens import ChatsTab, NetworkTab, PeersTab, SettingsTab, StumpsTab
 
 REPEAT_DELAY, REPEAT_RATE = 0.30, 0.07
 
@@ -44,7 +44,7 @@ class App:
         pygame.mouse.set_visible(False)
         pygame.key.start_text_input()
         self.fonts = T.Fonts(self.surf.get_height())
-        self.tabs = [ChatsTab(self), PeersTab(self), NetworkTab(self), SettingsTab(self)]
+        self.tabs = [ChatsTab(self), StumpsTab(self), PeersTab(self), NetworkTab(self), SettingsTab(self)]
         self.tab = 0
         self.stack = []
         self.running = True
@@ -233,15 +233,25 @@ class App:
         pygame.draw.rect(surf, T.SIDEBAR, (0, 0, W, f.line + 12))
         D.text(surf, f.mono_big, "FireFly", (12, 4), T.EMBER)
         x = 12 + f.mono_big.size("FireFly  ")[0]
-        unread = self.core.store.unread_total()
+        labels = []
         for i, tab in enumerate(self.tabs):
-            label = tab.title + (f" {unread}" if i == 0 and unread else "")
+            unread = tab.badge() if hasattr(tab, "badge") else 0
+            labels.append(tab.title + (f" {unread}" if unread else ""))
+        # As many tabs as there are must fit before the link indicator: the
+        # smaller font, then tighter, when the screen is narrow.
+        room = W - x - f.mono_small.size("○ no link")[0] - 18
+        tf, pad, gap = f.mono, 16, 4
+        for tf, pad, gap in ((f.mono, 16, 4), (f.mono_small, 12, 3), (f.mono_small, 8, 2)):
+            if sum(tf.size(l)[0] + pad + gap for l in labels) <= room:
+                break
+        ty = 4 + (f.line + 4 - tf.get_linesize()) // 2
+        for i, label in enumerate(labels):
             active = i == self.tab and not self.stack
-            w = f.mono.size(label)[0] + 16
+            w = tf.size(label)[0] + pad
             if i == self.tab:
                 D.box(surf, pygame.Rect(x, 4, w, f.line + 4), T.EMBER if active else T.PANEL, 4)
-            D.text(surf, f.mono, label, (x + 8, 6), T.BG if active else (T.TEXT if i == self.tab else T.MUTED))
-            x += w + 4
+            D.text(surf, tf, label, (x + pad // 2, ty), T.BG if active else (T.TEXT if i == self.tab else T.MUTED))
+            x += w + gap
         title = self.current.title if self.stack else ""
         if title:
             D.text(surf, f.mono, D.ellipsize(f.mono, "› " + title, W - 24), (12, f.line + 16), T.TEXT)
@@ -259,12 +269,19 @@ class App:
         y = H - f.line - 8
         pygame.draw.rect(surf, T.SIDEBAR, (0, y - 4, W, f.line + 12))
         x = 10
-        for btn, label in self.current.hints:
-            w = f.mono_small.size(btn)[0] + 10
+        hints = self.current.hints
+        fs = f.mono_small
+        # Every hint on the line: closer together when they wouldn't fit.
+        gap = 12
+        for gap in (12, 8, 5):
+            if 10 + sum(fs.size(b)[0] + 14 + fs.size(l)[0] + gap for b, l in hints) <= W:
+                break
+        for btn, label in hints:
+            w = fs.size(btn)[0] + 10
             D.box(surf, pygame.Rect(x, y, w, f.line - 2), T.BORDER, 4)
-            D.text(surf, f.mono_small, btn, (x + 5, y + 1), T.TEXT)
+            D.text(surf, fs, btn, (x + 5, y + 1), T.TEXT)
             x += w + 4
-            x += D.text(surf, f.mono_small, label, (x, y + 1), T.MUTED) + 12
+            x += D.text(surf, fs, label, (x, y + 1), T.MUTED) + gap
             if x > W - 40:
                 break
 
