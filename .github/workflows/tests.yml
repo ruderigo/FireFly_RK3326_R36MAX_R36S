@@ -55,6 +55,10 @@ jobs:
         timeout-minutes: 2
         run: python tests/run_audio_out.py
 
+      - name: Recording and sending voice notes
+        timeout-minutes: 3
+        run: python tests/run_voice_record.py
+
       - name: Radio manager against simulated RNodes
         timeout-minutes: 3
         run: python tests/run_radio.py

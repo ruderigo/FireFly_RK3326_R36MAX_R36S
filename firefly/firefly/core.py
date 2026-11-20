@@ -523,6 +523,59 @@ class Core:
                          daemon=True).start()
         return msg_id
 
+    def voice_mode_for(self, peer_hex):
+        """The codec a voice note to this address goes in: Opus over a Stump's
+        Wi-Fi (or when SETUP says Opus), else Codec 2 1200, LoRa-sized."""
+        from . import voice
+        want = self.settings.get("voice_send", "auto")
+        if want == "opus":
+            return voice.OPUS_OGG
+        if want == "codec2":
+            return voice.SEND_CODEC2
+        web = self.web.get(peer_hex)
+        if web is not None and web.online and self.settings.get("stump_wifi", True):
+            return voice.OPUS_OGG
+        return voice.SEND_CODEC2
+
+    def send_voice(self, peer_hex, mode, data, to=None):
+        """Send a recorded voice note (the LXMF audio field, as Sideband does).
+        To a Stump it's a private message to `to` ("/msg <to>"): over its
+        Wi-Fi with POST /rrc/voice, otherwise over LoRa with the note in the
+        audio field. Returns the message id."""
+        from . import voice
+        ms = voice.duration_ms(mode, data)
+        secs = None if ms is None else ms / 1000.0
+        text = ""
+        if peer_hex in self.stumps:
+            if not to:
+                raise voice.VoiceError("a voice note through a Stump goes to someone: /msg <name>")
+            text = "/msg " + to
+        path = voice.save(self.paths.audio, f"out-{int(time.time() * 1000)}", mode, data)
+        self.log(f"voice note to {peer_hex[:8]}{f' for {to}' if to else ''}: {voice.describe(mode)}, "
+                 f"{len(data)} bytes, {voice.label(ms)}")
+        web = self.web.get(peer_hex)
+        common = dict(audio_mode=mode, audio_path=path, audio_secs=secs)
+        if web is not None and web.online and self.settings.get("stump_wifi", True):
+            msg_id = self.store.add_message(peer_hex, True, text, "sending", method="wifi", **common)
+
+            def over_wifi():
+                from .stumpweb import Refused
+                try:
+                    web.send_voice(to, mode, data)
+                    self.store.update_message(msg_id, state="delivered", method="wifi")
+                except Refused as e:
+                    self.store.update_message(msg_id, state="failed", method="wifi", reason=str(e))
+                except Exception as e:
+                    self.log(f"voice note over Wi-Fi to {web.name} failed ({e}); trying LoRa")
+                    self.store.update_message(msg_id, state="pending", method=None, reason="Wi-Fi failed: trying LoRa")
+                    self._send_worker(msg_id, peer_hex, text, "auto", "", {LXMF.FIELD_AUDIO: [mode, data]})
+            threading.Thread(target=over_wifi, daemon=True).start()
+            return msg_id
+        msg_id = self.store.add_message(peer_hex, True, text, "pending", **common)
+        threading.Thread(target=self._send_worker, args=(msg_id, peer_hex, text, "auto", "",
+                                                         {LXMF.FIELD_AUDIO: [mode, data]}), daemon=True).start()
+        return msg_id
+
     def _recall(self, dest_hash, wait=None, on_slow=None):
         """The peer's identity, asking the network for its path when it isn't known yet.
         on_slow() is called once, when the first answer is late (the message says why it waits)."""
@@ -567,7 +620,7 @@ class Core:
                 self.web[k] = w
                 w.start()
 
-    def _send_worker(self, msg_id, peer_hex, text, method, title):
+    def _send_worker(self, msg_id, peer_hex, text, method, title, fields=None):
         dest_hash = bytes.fromhex(peer_hex)
         # First message to someone this session: announce first (unless just done),
         # so they hold our key and can verify the signature.
@@ -597,9 +650,10 @@ class Core:
             # LoRa-friendly default: one packet, no link setup. LXMF falls back
             # to a link by itself when the message is too big for one packet.
             desired = LXMessage.OPPORTUNISTIC
-        lxm = LXMessage(dest, self.local, self.outgoing_content(peer_hex, text), title=title, desired_method=desired)
+        lxm = LXMessage(dest, self.local, self.outgoing_content(peer_hex, text) if text else "", title=title,
+                        fields=fields, desired_method=desired)
         lxm.register_delivery_callback(lambda m, i=msg_id: self._on_delivered(i, m))
-        lxm.register_failed_callback(lambda m, i=msg_id: self._on_failed(i, m, peer_hex, text, title))
+        lxm.register_failed_callback(lambda m, i=msg_id: self._on_failed(i, m, peer_hex, text, title, fields))
         with self.lock:
             self.outbound[msg_id] = lxm
         try:
@@ -618,14 +672,14 @@ class Core:
             self.outbound.pop(msg_id, None)
             self.store.update_message(msg_id, state=state, method=_method_name(lxm.method))
 
-    def _on_failed(self, msg_id, lxm, peer_hex, text, title):
+    def _on_failed(self, msg_id, lxm, peer_hex, text, title, fields=None):
         with self.lock:
             self.outbound.pop(msg_id, None)
         if (lxm.method != LXMessage.PROPAGATED and self.settings["fallback_to_propagation"]
                 and self.propagation_node() and not self.is_stump(peer_hex)):
             # Peer unreachable right now: hand it to the propagation node instead.
             self.store.update_message(msg_id, state="pending", reason="retrying via propagation node")
-            threading.Thread(target=self._send_worker, args=(msg_id, peer_hex, text, "propagated", title),
+            threading.Thread(target=self._send_worker, args=(msg_id, peer_hex, text, "propagated", title, fields),
                              daemon=True).start()
             return
         reason = "not delivered"

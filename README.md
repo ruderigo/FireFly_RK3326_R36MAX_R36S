@@ -14,7 +14,7 @@ re-implementation, so compatibility comes from the reference code itself.
 
 ![FireFly screens: chats, a conversation, a Stump node, the keyboard, network and setup](docs/screenshots.png)
 
-**Status:** v0.9.10 (sandbox: beta testing against [SandBox_Stump_On](https://github.com/ruderigo/SandBox_Stump_On); stable FireFly is [FireFly_RK3326_R36MAX_R36S](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S)). Runs on RK3326 handhelds with the dArkOS image of
+**Status:** v0.9.11 (sandbox: beta testing against [SandBox_Stump_On](https://github.com/ruderigo/SandBox_Stump_On); stable FireFly is [FireFly_RK3326_R36MAX_R36S](https://github.com/ruderigo/FireFly_RK3326_R36MAX_R36S)). Runs on RK3326 handhelds with the dArkOS image of
 [arkos4clone](https://github.com/lcdyk0517/arkos4clone); tested on an R36MAX.
 See [Supported devices](#supported-devices).
 
@@ -323,6 +323,7 @@ From the `firefly/` folder:
     python3 tests/run_block.py         # delete and block, across a restart
     python3 tests/run_chat_selector.py # chat selector: any voice note, details, new arrivals
     python3 tests/run_audio_out.py     # voice notes follow USB headphones, as Ember does
+    python3 tests/run_voice_record.py  # recording and sending voice notes (needs c2enc, opusenc)
     python3 tests/ui_smoke.py          # 6000 random button presses through every screen
     python3 tests/screens.py 720x720 /tmp/shots   # screenshots of every screen
     python3 tests/devices.py /tmp/devshots        # every supported screen geometry, incl. rotated panels
@@ -333,7 +334,15 @@ From the `firefly/` folder:
   plugged in, and on the built-in speaker otherwise, chosen again for every
   note, as Ember does; SETUP → VOICE NOTES → *Plays on* says which.
   `FIREFLY_OUT=plughw:0,0` (any ALSA device) fixes it.
-- Voice notes are received and played, not recorded or sent. Images and files
+- **Recording voice notes**: Y in a chat → *Record a voice note* (through a
+  Stump: *Voice note to <name>*, a private message, as the Stump's own web
+  chat sends them). A records, A stops (or it stops at 15 s), X listens,
+  Y switches the codec, A sends, B throws it away. Codec 2 1200 over LoRa
+  (15 s in ~2.3 KB, as Sideband sends), Opus over a Stump's Wi-Fi; SETUP →
+  VOICE NOTES → *Send as* to choose. The mic is a USB mic or headset when
+  one is plugged in, else the built-in one; *Records from* says which,
+  `FIREFLY_MIC=plughw:1,0` fixes it. Needs `arecord`, `c2enc`/`opusenc`
+  (alsa-utils, codec2, opus-tools: install.sh adds them). Images and files
   are listed, not shown or sent.
 - Stamp generation is slow on the Cortex-A35: messages to peers that demand
   high stamp costs can sit at `⚙` for a while.

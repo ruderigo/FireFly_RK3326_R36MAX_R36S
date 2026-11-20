@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.9.11 (sandbox)
+Build 86 (Stump 1.0.0-beta.86).
+- **FireFly records and sends voice notes.** Y in a chat → *Record a
+  voice note*. A records, A stops (it stops by itself at 15 s, the
+  voice-note spec's longest), X listens to it as it will arrive, Y
+  switches the codec, A sends, B throws it away. Under 0.6 s it isn't sent
+  (a Stump refuses those).
+- **The standard LXMF audio field**, as Sideband sends: to a person, the
+  note in FIELD_AUDIO. Codec 2 1200 by default (15 s in ~2.3 KB, made for
+  LoRa); Opus over a Stump's Wi-Fi (~12 KB, kept under the Stump's 16 KB).
+  SETUP → VOICE NOTES → *Send as*: auto, Opus or Codec 2.
+- **Through a Stump** a voice note is a private message, as the Stump's own
+  web chat sends one: *Voice note to <name>* (from a DM, its author; or
+  any name). Over its Wi-Fi with `POST /rrc/voice`; over LoRa as
+  `/msg <name>` with the note attached. A refusal from the Stump (no one
+  by that name, too long, slow down) shows on the note and isn't retried
+  over LoRa.
+- **The mic follows a USB mic or headset**, as Ember's input does: the
+  first USB sound device with a capture input, else the built-in mic.
+  SETUP → VOICE NOTES → *Records from*; `FIREFLY_MIC` fixes it.
+- Sent notes stay in the chat, playable, with their length.
+- install.sh adds `alsa-utils` (arecord) beside opus-tools and codec2,
+  which also bring the encoders; the device report lists all five tools.
+- Tests: `tests/run_voice_record.py` (a stand-in arecord, the real c2enc
+  and opusenc; the mic's choice, 15 s stop, both codecs, to a person and
+  through a Stump over LoRa and Wi-Fi, a refusal, the screen; in CI).
+
 ## 0.9.10 (sandbox)
 Build 86 (Stump 1.0.0-beta.86).
 - **Voice notes play on USB-C headphones**, as Ember does (its PR #4).

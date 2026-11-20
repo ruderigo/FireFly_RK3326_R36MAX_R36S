@@ -11,7 +11,7 @@ echo "- system: $(. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME"), kernel $(
 echo "- python: $(python3 -V 2>&1 | cut -d' ' -f2)"
 [ -x "$APP/venv/bin/python" ] && echo "- firefly: $(cd "$APP" && "$APP/venv/bin/python" -c 'import firefly, RNS, LXMF, pygame; print(firefly.__version__, "/ rns", RNS.__version__, "/ lxmf", LXMF.__version__, "/ pygame", pygame.version.ver, "SDL", ".".join(map(str, pygame.get_sdl_version())))' 2>&1 | grep -v -i "hello from\|^pygame ")"
 echo "- controllers:"; grep -E '^N: Name=' /proc/bus/input/devices 2>/dev/null | sed 's/^N: Name=/    /'
-echo "- voice-note decoders: opusdec $(command -v opusdec >/dev/null && echo yes || echo NO), c2dec $(command -v c2dec >/dev/null && echo yes || echo NO)"
+echo "- voice-note codecs: opusdec $(command -v opusdec >/dev/null && echo yes || echo NO), c2dec $(command -v c2dec >/dev/null && echo yes || echo NO), opusenc $(command -v opusenc >/dev/null && echo yes || echo NO), c2enc $(command -v c2enc >/dev/null && echo yes || echo NO), arecord $(command -v arecord >/dev/null && echo yes || echo NO)"
 echo "- audio devices: $(aplay -l 2>/dev/null | grep -c '^card') card(s)"
 echo "- USB serial devices: $(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | tr '\n' ' ')"
 echo "- USB serial drivers: $(lsmod 2>/dev/null | grep -oE '^(cp210x|ch341|cdc_acm|ftdi_sio)' | tr '\n' ' ')"

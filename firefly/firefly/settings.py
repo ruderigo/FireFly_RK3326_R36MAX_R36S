@@ -39,6 +39,7 @@ DEFAULTS = {
     "packed_text": True,             # packed text with Stumps and apps that announce it (Stump beta.82)
     "stump_prefer": "wifi",          # the route a Stump uses for your DMs while you're on its network
     "voice_to_sd": True,             # copy every voice note to the SD card as a WAV
+    "voice_send": "auto",            # voice notes sent as: auto (Opus over a Stump's Wi-Fi, else Codec 2 1200), opus, codec2
     "voice_export_dir": "auto",      # auto = /roms(2)/firefly-voice, visible on a computer
     "screen_rotation": "auto",       # auto | 0 | 90 | 180 | 270 (clockwise); Select+R1 cycles it
     "joystick_map": {},              # raw button index -> action, for pads without a mapping
