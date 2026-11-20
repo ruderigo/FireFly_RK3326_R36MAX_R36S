@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.10 (sandbox)
+Build 86 (Stump 1.0.0-beta.86).
+- **Voice notes play on USB-C headphones**, as Ember does (its PR #4).
+  FireFly always played on the built-in card, so on a handheld whose
+  speaker is silent a voice note played to nobody while headphones were
+  plugged in. Now each note goes to the first USB sound device with a
+  playback output (a USB MIDI keyboard has none and is skipped), with
+  `aplay` straight to it; otherwise the built-in card, as before. It's
+  chosen again for every note, so plugging or unplugging needs nothing
+  else; a USB device that fails falls back to the built-in card for that
+  note. `FIREFLY_OUT` (any ALSA device, e.g. `plughw:0,0`) fixes the output.
+- SETUP → VOICE NOTES → **Plays on**: *USB: <its name>* or *built-in*.
+- Tests: `tests/run_audio_out.py` (a pretend `/proc/asound` and a stand-in
+  `aplay`; in CI).
+
 ## 0.9.9 (sandbox)
 Build 86 (Stump 1.0.0-beta.86). A Stump's rooms the way the Stump's chat
 page and the Android FireFly show them.

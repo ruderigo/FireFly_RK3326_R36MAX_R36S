@@ -7,9 +7,13 @@ FIELD_AUDIO holds [mode, bytes]:
 
 Decoding uses Debian's command-line decoders (`opusdec` from opus-tools,
 `c2dec` from codec2), so FireFly needs no compiled audio libraries.
-Playback uses pygame's mixer, falling back to `aplay`.
+Playback follows a USB sound device (USB-C headphones, a DAC) when one is
+plugged in, as Ember does: `aplay` straight to it. Otherwise the built-in
+card, through pygame's mixer, falling back to `aplay`. FIREFLY_OUT (an ALSA
+device, e.g. plughw:0,0) fixes the output instead.
 """
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -41,6 +45,49 @@ C2_HEADER_MODES = {0: LXMF.AM_CODEC2_3200, 1: LXMF.AM_CODEC2_2400, 2: LXMF.AM_CO
 
 
 MAX_AUDIO_BYTES = 64 * 1024       # the voice-note spec's cap
+
+
+# ------------------------------------------------ where the sound goes
+ASOUND = "/proc/asound"
+_CARD_LINE = re.compile(r"^\s*(\d+)\s+\[[^\]]*\]:\s*(\S+)\s+-\s+(.*?)\s*$")
+
+
+def find_usb_output(asound=ASOUND):
+    """The first USB-Audio card with a playback device, as Ember's
+    find_usb_pcm: (ALSA device, its name), or None. A USB MIDI keyboard is a
+    USB-Audio card too but has no playback PCM, so it's skipped."""
+    try:
+        with open(os.path.join(asound, "cards"), encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        m = _CARD_LINE.match(line)
+        if not m or m.group(2) != "USB-Audio":
+            continue
+        card = m.group(1)
+        try:
+            pcms = sorted(int(d[3:-1]) for d in os.listdir(os.path.join(asound, "card" + card))
+                          if re.fullmatch(r"pcm\d+p", d))
+        except OSError:
+            continue
+        if pcms:
+            return "plughw:%s,%d" % (card, pcms[0]), m.group(3)
+    return None
+
+
+def pick_output(asound=ASOUND):
+    """Where a voice note plays now: (ALSA device or None for the built-in
+    card's default, label). FIREFLY_OUT when set; else a USB sound device
+    when one is plugged in; else the built-in card. Asked again for every
+    note, so plugging or unplugging headphones needs nothing else."""
+    forced = os.environ.get("FIREFLY_OUT", "").strip()
+    if forced:
+        return forced, forced
+    usb = find_usb_output(asound)
+    if usb:
+        return usb[0], "USB: " + usb[1]
+    return None, "built-in"
 
 
 def parse_field(field):
@@ -342,6 +389,7 @@ class Player:
         self._proc = None
         self._ready = None            # decoded WAV waiting for the main thread to start it
         self._lock = threading.Lock()
+        self.output = pick_output()[1]   # where the last (or next) note plays, for SETUP
 
     def play(self, msg_id, path, mode, expected=None):
         self.stop()
@@ -375,8 +423,12 @@ class Player:
             self._started, self._wav_secs = _t.time(), wav_seconds(ready[1])
         except Exception:
             self._started, self._wav_secs = _t.time(), None
+        dev, self.output = pick_output()
         try:
-            if not self._play_pygame(ready[1]):
+            if dev:                          # USB headphones (or FIREFLY_OUT): straight to that device
+                self.log(f"audio: playing on {self.output} ({dev})")
+                self._play_aplay(ready[1], dev)
+            elif not self._play_pygame(ready[1]):
                 self._play_aplay(ready[1])
         except VoiceError as e:
             self.error = str(e)
@@ -405,12 +457,14 @@ class Player:
             self.log(f"pygame audio unavailable ({e}); trying aplay")
             return False
 
-    def _play_aplay(self, wav):
+    def _play_aplay(self, wav, dev=None):
         if not shutil.which("aplay"):
             raise VoiceError("no audio output available")
         with self._lock:
-            self._proc = subprocess.Popen(["aplay", "-q", wav], stderr=subprocess.PIPE)
-        self.method = "aplay"
+            self._proc = subprocess.Popen(["aplay", "-q"] + (["-D", dev] if dev else []) + [wav],
+                                          stderr=subprocess.PIPE)
+            self._proc_dev, self._proc_wav = dev, wav
+        self.method = "aplay" + (f" {dev}" if dev else "")
 
     def busy(self):
         """True while decoding or playing."""
@@ -421,9 +475,21 @@ class Player:
                 if self._proc.poll() is None:
                     return True
                 err = self._proc.stderr.read().decode(errors="replace").strip() if self._proc.stderr else ""
+                code, dev, wav = self._proc.returncode, getattr(self, "_proc_dev", None), getattr(self, "_proc_wav", None)
                 self._proc = None
                 if err:
                     self.log("aplay: " + err)
+                if code and dev and wav and not os.environ.get("FIREFLY_OUT"):
+                    # The USB device went away (or refused): the built-in card, as Ember falls back.
+                    self.log(f"audio: {dev} failed; playing on the built-in card instead")
+                    self.output = "built-in"
+                    self._lock.release()
+                    try:
+                        if not self._play_pygame(wav):
+                            self._play_aplay(wav)
+                    finally:
+                        self._lock.acquire()
+                    return True
                 self._finished()
                 return False
             if self._sound is not None:

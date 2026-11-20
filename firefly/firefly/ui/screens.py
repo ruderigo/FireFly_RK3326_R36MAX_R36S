@@ -1147,6 +1147,7 @@ class SettingsTab(ListScreen):
             ("head", "VOICE NOTES", None),
             ("voicesd", "Copy to SD card (as WAV)", "on" if s.get("voice_to_sd", True) else "off"),
             ("voicesdnow", "Copy all now", ""),
+            ("audioout", "Plays on", _audio_out()),
             ("head", "SCREEN", None),
             ("rotation", "Screen rotation", _rot_label(s.get("screen_rotation", "auto"), self.app.display.rotation)),
             ("head", "", None),
@@ -1404,6 +1405,12 @@ def _ifac_label(r):
     if r.get("ifac_passphrase") or r.get("ifac_netname"):
         return "set"
     return "none"
+
+
+def _audio_out():
+    """Where voice notes play now: USB headphones when plugged in, as Ember does."""
+    from .. import voice
+    return voice.pick_output()[1]
 
 
 def _rot_label(setting, actual):
