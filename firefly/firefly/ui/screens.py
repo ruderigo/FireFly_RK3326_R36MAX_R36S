@@ -1,5 +1,6 @@
 """The four tabs (CHATS, PEERS, NETWORK, SETUP) and the chat thread view."""
 import os
+import threading
 import time
 
 import pygame
@@ -115,6 +116,157 @@ class ChatsTab(ListScreen):
                 D.text(s, f.mono_small, str(c["unread"]), badge.center[0:1] + (badge.y,), T.BG, center=True)
 
         self.draw_list(surf, f, self.rows(), self.app.content_top, row, f.line * 2 + 12)
+
+
+# ======================================================================== voice note recorder
+class RecordScreen(Screen):
+    """Record a voice note and send it, as Sideband does: A records, A again
+    stops (or it stops itself at 15 s), X listens to it as it will arrive,
+    Y switches Codec 2 (LoRa-sized) / Opus, A sends, B throws it away."""
+
+    def __init__(self, app, peer, to=None):
+        super().__init__(app)
+        from .. import voice
+        self.voice = voice
+        self.peer, self.to = peer, to
+        self.rec = voice.Recorder(app.core.log)
+        self.mode = app.core.voice_mode_for(peer)
+        self.state = "ready"          # ready | recording | encoding | recorded
+        self.data = None
+        self.error = None
+        self.title = f"Voice note to {to or peer_label(app.core.store.peer(peer) or {}, peer)}"
+
+    @property
+    def hints(self):
+        if self.state == "recording":
+            return [("A", "stop"), ("B", "cancel")]
+        if self.state == "recorded":
+            return [("A", "send"), ("X", "listen"), ("Y", "codec"), ("B", "discard")]
+        if self.state == "encoding":
+            return [("B", "cancel")]
+        return [("A", "record"), ("Y", "codec"), ("B", "back")]
+
+    def _limit(self):
+        return self.voice.STUMP_MAX_BYTES if self.app.core.is_stump(self.peer) else self.voice.MAX_AUDIO_BYTES
+
+    def _encode(self):
+        self.state, self.data, self.error = "encoding", None, None
+        pcm, mode = bytes(self.rec.pcm), self.mode
+
+        def work():
+            try:
+                data = self.voice.encode(pcm, mode, self._limit())
+                if self.state == "encoding" and self.mode == mode:
+                    self.data, self.state = data, "recorded"
+            except self.voice.VoiceError as e:
+                self.error, self.state = str(e), "ready"
+        threading.Thread(target=work, daemon=True).start()
+
+    def _finish_recording(self):
+        secs = self.rec.stop()
+        if self.rec.error and not self.rec.pcm:
+            self.error, self.state = self.rec.error, "ready"
+        elif secs < self.voice.REC_MIN_S:
+            self.error, self.state = "Too short: hold on to it a little longer (0.6 s at least)", "ready"
+        else:
+            self._encode()
+
+    def handle(self, action):
+        core = self.app.core
+        if self.state == "ready":
+            if action == "a":
+                self.error = None
+                if not self.rec.start():
+                    self.error = self.rec.error
+                else:
+                    self.state = "recording"
+            elif action == "y":
+                self._switch()
+            elif action == "b":
+                self.app.pop()
+        elif self.state == "recording":
+            if action == "a":
+                self._finish_recording()
+            elif action == "b":
+                self.rec.stop(); self.state = "ready"
+        elif self.state == "encoding":
+            if action == "b":
+                self.state = "ready"
+        elif self.state == "recorded":
+            if action == "a":
+                try:
+                    core.send_voice(self.peer, self.mode, self.data, self.to)
+                except self.voice.VoiceError as e:
+                    self.error = str(e)
+                    return
+                self.app.player.stop()
+                self.app.pop()
+                self.app.toast("Voice note sent" + (f" to {self.to}" if self.to else ""), 3)
+            elif action == "x":
+                import tempfile
+                path = os.path.join(tempfile.gettempdir(), "firefly-preview" + self.voice.extension(self.mode))
+                with open(path, "wb") as fh:
+                    fh.write(self.data)
+                self.app.player.play("preview", path, self.mode, len(self.rec.pcm) / 2.0 / self.voice.REC_RATE)
+            elif action == "y":
+                self._switch()
+            elif action == "b":
+                self.app.player.stop()
+                self.data, self.state = None, "ready"
+
+    def _switch(self):
+        v = self.voice
+        self.mode = v.OPUS_OGG if self.mode != v.OPUS_OGG else v.SEND_CODEC2
+        if self.state == "recorded":
+            self._encode()
+
+    def draw(self, surf, f):
+        v = self.voice
+        if self.state == "recording" and not self.rec.recording:
+            self._finish_recording()                     # it stopped itself at 15 s, or the mic went away
+        W, H = surf.get_size()
+        r = pygame.Rect(16, self.app.content_top + 6, W - 32, H - self.app.content_top - f.line * 2 - 16)
+        D.box(surf, r, T.PANEL, 8, T.BORDER)
+        x, y = r.x + 18, r.y + 14
+        D.text(surf, f.mono_big, self.title, (x, y), T.EMBER)
+        y += f.mono_big.get_linesize() + 10
+        D.text(surf, f.mono, f"Mic: {self.rec.mic}", (x, y), T.MUTED)
+        y += f.line + 4
+        codec = "Opus (Wi-Fi quality, ~12 KB)" if self.mode == v.OPUS_OGG else "Codec 2 1200 (LoRa-sized, ~2 KB)"
+        D.text(surf, f.mono, f"Codec: {codec}", (x, y), T.MUTED)
+        y += f.line + 16
+        secs = self.rec.seconds
+        big = f"{secs:4.1f} s"
+        col = T.ERROR if self.state == "recording" and int(time.time() * 2) % 2 else T.TEXT
+        D.text(surf, f.mono_big, ("● " if self.state == "recording" else "") + big + f"  / {v.REC_MAX_S:.0f} s", (x, y), col)
+        y += f.mono_big.get_linesize() + 10
+        # time used, and the mic's level while recording
+        bw = r.w - 36
+        pygame.draw.rect(surf, T.BG, (x, y, bw, 10), border_radius=4)
+        pygame.draw.rect(surf, T.EMBER, (x, y, int(bw * min(1.0, secs / v.REC_MAX_S)), 10), border_radius=4)
+        y += 18
+        if self.state == "recording":
+            pygame.draw.rect(surf, T.BG, (x, y, bw, 10), border_radius=4)
+            pygame.draw.rect(surf, T.OK_GREEN,
+                             (x, y, int(bw * min(1.0, self.rec.level * 1.5)), 10), border_radius=4)
+            y += 18
+        y += 8
+        if self.state == "ready":
+            msg = "A to record: talk, then A again (it stops by itself at 15 s)."
+        elif self.state == "recording":
+            msg = "Recording… A to stop."
+        elif self.state == "encoding":
+            msg = "Encoding…"
+        else:
+            msg = f"{len(self.data)} bytes, {v.label(v.duration_ms(self.mode, self.data))}. A sends it, X to listen first."
+        for ln in D.wrap(f.mono, msg, r.w - 36):
+            D.text(surf, f.mono, ln, (x, y), T.TEXT)
+            y += f.line
+        if self.error:
+            y += 6
+            for ln in D.wrap(f.mono, self.error, r.w - 36):
+                D.text(surf, f.mono, ln, (x, y), T.ERROR)
+                y += f.line
 
 
 # ======================================================================== STUMPS
@@ -400,6 +552,16 @@ class ChatScreen(Screen):
                 items = [("Details of the selected message", lambda m=m: self.app.push(
                     Info(self.app, "Message", _message_details(core, m)))),
                          ("Delete the selected message", lambda m=m: self._delete_message(m))] + items
+            # Record a voice note: to this person; through a Stump, to someone on it (a DM).
+            if core.is_stump(self.peer):
+                who = self._dm_author(m) if self.shown_view() == stump.DM_VIEW else None
+                if who:
+                    items.insert(0, (f"Voice note to {who}", lambda w=who: self.app.push(RecordScreen(self.app, self.peer, w))))
+                items.insert(1 if who else 0, ("Voice note to someone on this Stump…", lambda: self.app.push(Compose(
+                    self.app, "Voice note to (their name on this Stump)",
+                    lambda t: self.app.push(RecordScreen(self.app, self.peer, t.strip().lstrip("~")))))))
+            else:
+                items.insert(0, ("Record a voice note", lambda: self.app.push(RecordScreen(self.app, self.peer))))
             if core.store.voice_notes(self.peer, 1):     # before the destructive ones, which stay last
                 i = next((k for k, (l, _) in enumerate(items) if l.startswith("Delete conversation")), len(items))
                 items.insert(i, ("Copy voice notes to the SD card", lambda: self.app.copy_voice_to_sd()))
@@ -1148,6 +1310,9 @@ class SettingsTab(ListScreen):
             ("voicesd", "Copy to SD card (as WAV)", "on" if s.get("voice_to_sd", True) else "off"),
             ("voicesdnow", "Copy all now", ""),
             ("audioout", "Plays on", _audio_out()),
+            ("audioin", "Records from", _audio_in()),
+            ("voicesend", "Send as", {"auto": "auto (Opus on Wi-Fi, else Codec 2)", "opus": "Opus",
+                                      "codec2": "Codec 2 1200"}.get(s.get("voice_send", "auto"), "auto")),
             ("head", "SCREEN", None),
             ("rotation", "Screen rotation", _rot_label(s.get("screen_rotation", "auto"), self.app.display.rotation)),
             ("head", "", None),
@@ -1213,6 +1378,8 @@ class SettingsTab(ListScreen):
             r["port"] = _step(opts, r["port"] if r["port"] in opts else "auto", d); self._radio()
         elif key == "pmode":
             s["propagation_mode"] = _step(["auto", "manual", "off"], s["propagation_mode"], d); self._net()
+        elif key == "voicesend":
+            s["voice_send"] = _step(["auto", "opus", "codec2"], s.get("voice_send", "auto"), d); s.save()
         elif key == "rotation":
             self.app.set_rotation(_step(["auto", 0, 90, 180, 270], s.get("screen_rotation", "auto"), d))
 
@@ -1292,6 +1459,8 @@ class SettingsTab(ListScreen):
                                                                   max_len=80, show_packet_meter=False)))]
             items += [(f"Remove {t}", (lambda t=t: self._remove_tcp(t))) for t in s["tcp_peers"]]
             app.push(Menu(app, "TCP peers", items))
+        elif key == "voicesend":
+            s["voice_send"] = _step(["auto", "opus", "codec2"], s.get("voice_send", "auto"), 1); s.save()
         elif key == "pmode":
             nodes = core.store.peers("propagation")
             items = [("Auto (nearest heard)", lambda: self._set_pn("auto", None)),
@@ -1405,6 +1574,12 @@ def _ifac_label(r):
     if r.get("ifac_passphrase") or r.get("ifac_netname"):
         return "set"
     return "none"
+
+
+def _audio_in():
+    """Where voice notes are recorded from: a USB mic or headset when plugged in."""
+    from .. import voice
+    return voice.pick_mic()[1]
 
 
 def _audio_out():

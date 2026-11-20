@@ -53,8 +53,8 @@ fi
 echo "== 1/5 System packages (prebuilt: no compiling, so no swap needed)"
 # Needed to run at all:
 NEEDED="python3-venv python3-pygame python3-cryptography python3-serial"
-# Nice to have: the font, and the voice-note decoders (opus-tools: Opus, codec2: Codec 2).
-OPTIONAL="fonts-dejavu-core opus-tools codec2"
+# Nice to have: the font, the voice-note codecs (opus-tools: Opus, codec2: Codec 2) and arecord (alsa-utils) to record.
+OPTIONAL="fonts-dejavu-core opus-tools codec2 alsa-utils"
 missing() { for p in "$@"; do dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "ok installed" || echo "$p"; done; }
 TODO=$(missing $NEEDED $OPTIONAL | tr '\n' ' ')
 if [ -z "${TODO// }" ]; then

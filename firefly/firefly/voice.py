@@ -76,6 +76,43 @@ def find_usb_output(asound=ASOUND):
     return None
 
 
+def find_usb_capture(asound=ASOUND):
+    """The first USB-Audio card with a capture device (a USB mic, a headset's
+    mic), as Ember's find_usb_pcm for capture: (ALSA device, its name) or None."""
+    try:
+        with open(os.path.join(asound, "cards"), encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        m = _CARD_LINE.match(line)
+        if not m or m.group(2) != "USB-Audio":
+            continue
+        card = m.group(1)
+        try:
+            pcms = sorted(int(d[3:-1]) for d in os.listdir(os.path.join(asound, "card" + card))
+                          if re.fullmatch(r"pcm\d+c", d))
+        except OSError:
+            continue
+        if pcms:
+            return "plughw:%s,%d" % (card, pcms[0]), m.group(3)
+    return None
+
+
+def pick_mic(asound=ASOUND):
+    """Where a voice note is recorded from: (ALSA device or None for the
+    built-in default, label). FIREFLY_MIC when set; else a USB mic or
+    headset when one is plugged in; else the built-in mic, if the handheld
+    has one."""
+    forced = os.environ.get("FIREFLY_MIC", "").strip()
+    if forced:
+        return forced, forced
+    usb = find_usb_capture(asound)
+    if usb:
+        return usb[0], "USB: " + usb[1]
+    return None, "built-in"
+
+
 def pick_output(asound=ASOUND):
     """Where a voice note plays now: (ALSA device or None for the built-in
     card's default, label). FIREFLY_OUT when set; else a USB sound device
@@ -376,6 +413,140 @@ def export_note(note, sender, folder):
     except AttributeError:
         pass
     return wav_out, secs
+
+
+# ------------------------------------------------ recording (sending voice notes)
+REC_RATE = 16000                  # recorded at 16 kHz mono; Codec 2 takes it halved to 8 kHz
+REC_MAX_S = 15.0                  # the voice-note spec's (and a Stump's) longest note
+REC_MIN_S = 0.6                   # a Stump refuses shorter ones
+STUMP_MAX_BYTES = 16384           # a Stump takes notes up to 16 KB
+SEND_CODEC2 = LXMF.AM_CODEC2_1200 # LoRa-sized: 15 s in ~2.3 KB, as Sideband sends over LoRa
+OPUS_KBPS = 6                     # 15 s of speech in ~12 KB: under a Stump's 16 KB
+
+
+def encoders_available():
+    return {"opus": shutil.which("opusenc") is not None, "codec2": shutil.which("c2enc") is not None,
+            "arecord": shutil.which("arecord") is not None}
+
+
+class Recorder:
+    """Records one voice note from the mic (arecord), up to 15 s. Its level
+    and length are read by the screen while it records."""
+
+    def __init__(self, log=print):
+        self.log = log
+        self.pcm = bytearray()        # 16 kHz mono 16-bit
+        self.level = 0.0              # 0..1, the latest peak
+        self.recording = False
+        self.error = None
+        self.mic = pick_mic()[1]
+        self._proc = None
+
+    @property
+    def seconds(self):
+        return len(self.pcm) / 2.0 / REC_RATE
+
+    def start(self):
+        if not shutil.which("arecord"):
+            self.error = "arecord isn't installed (alsa-utils)"
+            return False
+        dev, self.mic = pick_mic()
+        self.pcm, self.level, self.error = bytearray(), 0.0, None
+        cmd = ["arecord", "-q", "-t", "raw", "-f", "S16_LE", "-r", str(REC_RATE), "-c", "1"] + (["-D", dev] if dev else [])
+        try:
+            self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except OSError as e:
+            self.error = f"couldn't start recording: {e}"
+            return False
+        self.recording = True
+        self.log(f"voice: recording from {self.mic}{f' ({dev})' if dev else ''}")
+        threading.Thread(target=self._read, args=(self._proc,), daemon=True).start()
+        return True
+
+    def _read(self, proc):
+        chunk = REC_RATE // 10 * 2                    # a tenth of a second
+        limit = int(REC_MAX_S * REC_RATE) * 2
+        while self.recording:
+            data = proc.stdout.read(chunk)
+            if not data:
+                break
+            room = limit - len(self.pcm)
+            self.pcm += data[:room]
+            samples = memoryview(data[:len(data) // 2 * 2]).cast("h")
+            self.level = max((abs(x) for x in samples), default=0) / 32768.0
+            if len(self.pcm) >= limit:
+                break                                  # 15 s: the longest a note may be
+        if self.recording and proc.poll() is not None and not self.pcm:
+            err = proc.stderr.read().decode(errors="replace").strip() if proc.stderr else ""
+            self.error = "the mic didn't record" + (f": {err.splitlines()[-1]}" if err else "")
+            self.log("voice: " + self.error)
+        self._end(proc)
+
+    def _end(self, proc):
+        self.recording = False
+        self.level = 0.0
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+    def stop(self):
+        proc = self._proc
+        self.recording = False
+        if proc is not None:
+            self._end(proc)
+        return self.seconds
+
+
+def _halve_rate(pcm16k):
+    """16 kHz -> 8 kHz for Codec 2: each pair of samples averaged (a gentle
+    low-pass as it goes)."""
+    import array
+    a = array.array("h"); a.frombytes(bytes(pcm16k[:len(pcm16k) // 4 * 4]))
+    out = array.array("h", ((a[i] + a[i + 1]) // 2 for i in range(0, len(a) - 1, 2)))
+    return out.tobytes()
+
+
+def encode(pcm16k, mode, max_bytes=MAX_AUDIO_BYTES):
+    """A recording as a voice note's bytes in `mode`: raw Codec 2 frames (no
+    header, as the spec and Sideband have them) or an Ogg Opus file. Opus
+    that comes out over max_bytes is encoded again at a lower rate."""
+    import tempfile
+    tmp = tempfile.mkdtemp(prefix="ff-rec-")
+    try:
+        if mode in CODEC2:
+            if not shutil.which("c2enc"):
+                raise VoiceError("c2enc isn't installed (codec2): can't send Codec 2")
+            raw, out = os.path.join(tmp, "in.raw"), os.path.join(tmp, "out.bit")
+            with open(raw, "wb") as f:
+                f.write(_halve_rate(pcm16k))
+            p = subprocess.run(["c2enc", CODEC2[mode][0], raw, out], stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, timeout=60)
+        elif mode == OPUS_OGG:
+            if not shutil.which("opusenc"):
+                raise VoiceError("opusenc isn't installed (opus-tools): can't send Opus")
+            raw, out = os.path.join(tmp, "in.raw"), os.path.join(tmp, "out.ogg")
+            with open(raw, "wb") as f:
+                f.write(bytes(pcm16k))
+            for kbps in (OPUS_KBPS, 5, 4):
+                p = subprocess.run(["opusenc", "--quiet", "--raw", "--raw-rate", str(REC_RATE), "--raw-chan", "1",
+                                    "--raw-bits", "16", "--bitrate", str(kbps), "--framesize", "60", raw, out],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+                if p.returncode or not os.path.isfile(out) or os.path.getsize(out) <= max_bytes:
+                    break
+        else:
+            raise VoiceError(f"can't send {describe(mode)}")
+        if p.returncode or not os.path.isfile(out):
+            raise VoiceError("encoding failed: " + (p.stderr.decode(errors="replace").strip().splitlines() or ["?"])[-1])
+        with open(out, "rb") as f:
+            data = f.read()
+        if not data or len(data) > max_bytes:
+            raise VoiceError(f"the note came out at {len(data)} bytes: too big to send")
+        return data
+    finally:
+        shutil.rmtree(tmp, True)
 
 
 class Player:

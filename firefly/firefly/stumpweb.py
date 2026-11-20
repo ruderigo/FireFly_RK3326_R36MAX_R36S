@@ -15,6 +15,7 @@ import random
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import RNS
@@ -35,6 +36,10 @@ class WebError(Exception):
     def __init__(self, status, body=None):
         super().__init__(f"HTTP {status}")
         self.status, self.body = status, body or {}
+
+
+class Refused(Exception):
+    """The Stump answered, and said no (not a network failure: no LoRa retry)."""
 
 
 def _http(method, url, body=None, ctype="text/plain; charset=utf-8", raw=False):
@@ -230,6 +235,27 @@ class StumpWeb:
             return {}
 
     # ------------------------------------------------------------------ sending
+    def send_voice(self, to, mode, data):
+        """POST /rrc/voice?to=&mode=: a voice note to someone on this Stump,
+        as its web chat sends one. The Stump answers as for /msg."""
+        url = self.base + "/rrc/voice?to=%s&mode=%d" % (urllib.parse.quote(to or "", safe=""), int(mode))
+        with self.lock:
+            try:
+                d = _http("POST", url, bytes(data), ctype="application/octet-stream")
+            except WebError as e:
+                if e.body.get("error") == "hello_required" or e.body.get("hello") == "required":
+                    self._greet()
+                    d = _http("POST", url, bytes(data), ctype="application/octet-stream")
+                else:
+                    raise
+        replies = [str(r) for r in (d.get("replies") or [])]
+        if replies:
+            self.core.store.add_message(self.lxmf, False, "\n".join(replies), "received", method="wifi",
+                                        lxm_hash=f"web:{self.lxmf[:8]}:v{time.time():.6f}", unread=False)
+            if not any(r.startswith("[DM]") for r in replies):
+                raise Refused(replies[0])           # refused ("⊖ name", too long, slow down...)
+        return replies
+
     def send(self, text):
         """POST /rrc/send. Returns (replies, room) or raises."""
         with self.lock:
